@@ -54,7 +54,7 @@ class HPManaReader:
             w = int(self.template.shape[1] * scale)
             h = int(self.template.shape[0] * scale)
             
-            if w < 50 or h < 20 or w > screenshot.shape[1] or h > screenshot.shape[0]:
+            if w < 50 or h < 10 or w > screenshot.shape[1] or h > screenshot.shape[0]:
                 continue
             
             resized = cv2.resize(self.template, (w, h))
@@ -72,25 +72,61 @@ class HPManaReader:
         return None
     
     def read_numbers(self, image: Image.Image, region: Tuple[int, int, int, int]) -> Tuple[Optional[int], Optional[int]]:
-        """Read HP and Mana from the status panel region."""
+        """
+        Read HP and Mana from BELOW the Stop button.
+        Region is where Stop button was found - numbers are below it.
+        """
         x, y, w, h = region
-        cropped = image.crop((x, y, x + w, y + h))
         
-        # Extract right side of panel where numbers are
-        num_region = cropped.crop((int(w * 0.55), int(h * 0.30), w, h))
+        # Stop button is the matched region
+        # Numbers are BELOW the Stop button
         
-        arr = np.array(num_region.convert('L'))
+        numbers_y_start = y + h  # Start right below Stop button
+        numbers_width = 80  # Width to capture 5-digit numbers
+        numbers_height = 45  # Total height for both lines
         
-        # Try multiple thresholds (start low for light text on dark bg)
-        for thresh_val in [80, 100, 120, 140]:
-            _, binary = cv2.threshold(arr, thresh_val, 255, cv2.THRESH_BINARY)
-            result = self._ocr_numbers(binary)
-            if result[0] is not None and result[1] is not None:
-                return result
+        # Start 10px to the left to capture all digits
+        start_x = max(0, x - 10)
         
-        # Try OTSU as fallback
-        _, binary = cv2.threshold(arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        return self._ocr_numbers(binary)
+        # Crop full numbers region from original image
+        numbers_region = image.crop((
+            start_x,
+            numbers_y_start,
+            start_x + numbers_width,
+            numbers_y_start + numbers_height
+        ))
+        
+        # HP at rows 5-20, Mana at rows 22-40
+        hp_region = numbers_region.crop((0, 5, numbers_width, 20))
+        mana_region = numbers_region.crop((0, 22, numbers_width, 40))
+        
+        hp = self._read_single_number(hp_region)
+        mana = self._read_single_number(mana_region)
+        
+        return hp, mana
+    
+    def _read_single_number(self, img: Image.Image) -> Optional[int]:
+        """OCR a single number from a small region."""
+        arr = np.array(img.convert('L'))
+        
+        # Try multiple PSM modes and thresholds
+        for psm in [7, 12, 8]:
+            for thresh in [80, 100, 120]:
+                _, binary = cv2.threshold(arr, thresh, 255, cv2.THRESH_BINARY)
+                scaled = cv2.resize(binary, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+                padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
+                
+                try:
+                    text = pytesseract.image_to_string(
+                        padded, config=f'--psm {psm} -c tessedit_char_whitelist=0123456789'
+                    ).strip()
+                    
+                    if text and text.isdigit() and 2 <= len(text) <= 5:
+                        return int(text)
+                except:
+                    pass
+        
+        return None
     
     def _ocr_numbers(self, binary: np.ndarray) -> Tuple[Optional[int], Optional[int]]:
         """OCR binary image and extract HP/Mana numbers."""

@@ -1,5 +1,5 @@
 """
-Tibia Pixel Bot - Main with Overlay
+Windify Bot - Main with Overlay and Auto-Heal
 """
 
 import time
@@ -9,6 +9,7 @@ from window_finder import WindowTracker
 from screen_capture import ScreenCapture
 from hp_mana_reader import HPManaReader
 from overlay import BotOverlay
+from healer import AutoHealer, press_key
 
 
 class TibiaBot:
@@ -17,8 +18,20 @@ class TibiaBot:
         self.tracker = WindowTracker()
         self.capture = ScreenCapture()
         self.reader = HPManaReader()
+        self.healer = AutoHealer(press_key)
         self.running = False
         self.active = False
+        
+        # Connect overlay callbacks
+        self._setup_callbacks()
+    
+    def _setup_callbacks(self):
+        """Connect overlay controls to healer."""
+        self.overlay.on_heal_toggle = self.healer.toggle_heal
+        self.overlay.on_critical_toggle = self.healer.toggle_critical_heal
+        self.overlay.on_heal_threshold_change = self.healer.set_heal_threshold
+        self.overlay.on_critical_threshold_change = self.healer.set_critical_threshold
+        self.overlay.on_max_hp_change = self.healer.set_max_hp
     
     def start(self):
         """Start the bot loop."""
@@ -56,9 +69,28 @@ class TibiaBot:
                 status = self.reader.read_status(img)
                 
                 if status.hp or status.mana:
-                    self.overlay.set_status("✅ Running")
                     self.overlay.set_hp(status.hp)
                     self.overlay.set_mana(status.mana)
+                    
+                    # Auto-detect max HP and update overlay
+                    if status.hp and self.healer.max_hp is None:
+                        self.healer.auto_detect_max_hp(status.hp)
+                        self.overlay.set_max_hp(self.healer.max_hp)
+                    
+                    # Check for healing
+                    if status.hp:
+                        heal_result = self.healer.check_and_heal(status.hp)
+                        
+                        if heal_result == "critical":
+                            self.overlay.set_status("🩹 Critical Heal!")
+                        elif heal_result == "normal":
+                            self.overlay.set_status("🩹 Healed!")
+                        elif self.healer.is_on_cooldown():
+                            cd = self.healer.get_cooldown_remaining()
+                            self.overlay.set_status(f"✅ Running (CD: {cd:.1f}s)")
+                        else:
+                            hp_pct = self.healer.get_hp_percent(status.hp)
+                            self.overlay.set_status(f"✅ Running ({hp_pct:.0f}% HP)")
                 else:
                     self.overlay.set_status("🔍 Reading...")
             
@@ -72,7 +104,7 @@ class TibiaBot:
         bot_thread = threading.Thread(target=self.run_loop, daemon=True)
         bot_thread.start()
         
-        # Run overlay in main thread (tkinter requirement)
+        # Run overlay in main thread
         self.overlay.run()
         
         # Cleanup
@@ -81,7 +113,6 @@ class TibiaBot:
 
 
 def main():
-    # Check tesseract
     try:
         import pytesseract
         pytesseract.get_tesseract_version()
@@ -89,7 +120,6 @@ def main():
         print("⚠️ Tesseract not found! Install: brew install tesseract")
         return
     
-    # Create overlay with callbacks
     overlay = BotOverlay()
     bot = TibiaBot(overlay)
     
