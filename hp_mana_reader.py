@@ -1,6 +1,7 @@
 """
 Tibia Pixel Bot - HP/Mana Reader
-Simple and working version.
+Uses template matching with Stop button as anchor.
+Below Stop button: first line = HP, second line = Mana.
 """
 
 import re
@@ -29,7 +30,7 @@ class HPManaReader:
     def __init__(self):
         self.template_path = Path(__file__).parent / "templates" / "status_bar_template.png"
         self.template = None
-        self.status_bar_location = None
+        self.region = None  # (x, y, w, h) of status panel
         self.last_hp = None
         self.last_mana = None
         self._load_template()
@@ -40,23 +41,24 @@ class HPManaReader:
             if self.template is not None:
                 print(f"✅ Template: {self.template.shape[1]}x{self.template.shape[0]}")
     
-    def find_status_bar(self, screenshot_np: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
-        """Find status bar using template matching."""
+    def find_status_panel(self, screenshot: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+        """Find status panel using template matching."""
         if self.template is None:
             return None
         
         best_match = None
         best_val = 0
         
+        # Try different scales
         for scale in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]:
             w = int(self.template.shape[1] * scale)
             h = int(self.template.shape[0] * scale)
             
-            if w < 50 or h < 15 or w > screenshot_np.shape[1] or h > screenshot_np.shape[0]:
+            if w < 50 or h < 20 or w > screenshot.shape[1] or h > screenshot.shape[0]:
                 continue
             
             resized = cv2.resize(self.template, (w, h))
-            result = cv2.matchTemplate(screenshot_np, resized, cv2.TM_CCOEFF_NORMED)
+            result = cv2.matchTemplate(screenshot, resized, cv2.TM_CCOEFF_NORMED)
             _, max_val, _, max_loc = cv2.minMaxLoc(result)
             
             if max_val > best_val:
@@ -70,44 +72,60 @@ class HPManaReader:
         return None
     
     def read_numbers(self, image: Image.Image, region: Tuple[int, int, int, int]) -> Tuple[Optional[int], Optional[int]]:
-        """Read HP and Mana numbers from the status bar region."""
+        """Read HP and Mana from the status panel region."""
         x, y, w, h = region
         cropped = image.crop((x, y, x + w, y + h))
         
-        # Template is clean HP/Mana bars:
-        # Top half = HP bar + number
-        # Bottom half = Mana bar + number
+        # Extract right side of panel where numbers are
+        num_region = cropped.crop((int(w * 0.55), int(h * 0.30), w, h))
         
-        half_h = h // 2
+        arr = np.array(num_region.convert('L'))
         
-        # HP: 4-digit number, start at 75%
-        hp_img = cropped.crop((int(w * 0.75), 0, w, half_h))
+        # Try multiple thresholds (start low for light text on dark bg)
+        for thresh_val in [80, 100, 120, 140]:
+            _, binary = cv2.threshold(arr, thresh_val, 255, cv2.THRESH_BINARY)
+            result = self._ocr_numbers(binary)
+            if result[0] is not None and result[1] is not None:
+                return result
         
-        # Mana: 3-digit number, start at 68%
-        mana_img = cropped.crop((int(w * 0.68), half_h, w, h))
+        # Try OTSU as fallback
+        _, binary = cv2.threshold(arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return self._ocr_numbers(binary)
+    
+    def _ocr_numbers(self, binary: np.ndarray) -> Tuple[Optional[int], Optional[int]]:
+        """OCR binary image and extract HP/Mana numbers."""
+        scaled = cv2.resize(binary, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
+        padded = cv2.copyMakeBorder(scaled, 15, 15, 15, 15, cv2.BORDER_CONSTANT, value=255)
         
-        hp = self._read_number(hp_img)
-        mana = self._read_number(mana_img)
+        try:
+            # PSM 11 works best for sparse text with numbers
+            text = pytesseract.image_to_string(
+                padded,
+                config='--psm 11 -c tessedit_char_whitelist=0123456789'
+            ).strip()
+            
+            numbers = re.findall(r'\d{2,5}', text)
+            
+            if len(numbers) >= 2:
+                return int(numbers[0]), int(numbers[1])
+            elif len(numbers) == 1:
+                return int(numbers[0]), None
+        except:
+            pass
         
-        return hp, mana
+        return None, None
     
     def _read_number(self, img: Image.Image) -> Optional[int]:
-        """OCR a small region to get a number."""
-        arr = np.array(img.convert('L'))  # Grayscale
+        """OCR a region to extract a number."""
+        arr = np.array(img.convert('L'))
         
-        # Tibia numbers are bright (white/light) on dark background
-        # Try threshold at 150 (bright pixels become white)
         _, binary = cv2.threshold(arr, 150, 255, cv2.THRESH_BINARY)
-        
-        # Scale up 4x for better OCR
         scaled = cv2.resize(binary, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
-        
-        # Add white padding
         padded = cv2.copyMakeBorder(scaled, 15, 15, 15, 15, cv2.BORDER_CONSTANT, value=255)
         
         try:
             text = pytesseract.image_to_string(
-                padded, 
+                padded,
                 config='--psm 7 -c tessedit_char_whitelist=0123456789'
             ).strip()
             
@@ -119,23 +137,19 @@ class HPManaReader:
         return None
     
     def read_status(self, image: Image.Image) -> StatusReading:
-        """Main method: read HP and Mana from screenshot."""
+        """Read HP and Mana from screenshot."""
         import time
         
-        # Convert PIL to OpenCV BGR
         screenshot_np = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         
-        # Find status bar if not cached
-        if self.status_bar_location is None:
-            self.status_bar_location = self.find_status_bar(screenshot_np)
+        if self.region is None:
+            self.region = self.find_status_panel(screenshot_np)
         
-        if self.status_bar_location is None:
-            return StatusReading(hp=None, mana=None)
+        if self.region is None:
+            return StatusReading(hp=self.last_hp, mana=self.last_mana)
         
-        # Read numbers
-        hp, mana = self.read_numbers(image, self.status_bar_location)
+        hp, mana = self.read_numbers(image, self.region)
         
-        # Cache valid readings
         if hp: self.last_hp = hp
         if mana: self.last_mana = mana
         
@@ -146,7 +160,7 @@ class HPManaReader:
         )
     
     def reset(self):
-        self.status_bar_location = None
+        self.region = None
 
 
 if __name__ == "__main__":
