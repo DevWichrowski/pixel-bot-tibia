@@ -29,9 +29,12 @@ class TibiaBot:
         """Connect overlay controls to healer."""
         self.overlay.on_heal_toggle = self.healer.toggle_heal
         self.overlay.on_critical_toggle = self.healer.toggle_critical_heal
+        self.overlay.on_mana_toggle = self.healer.toggle_mana_restore
         self.overlay.on_heal_threshold_change = self.healer.set_heal_threshold
         self.overlay.on_critical_threshold_change = self.healer.set_critical_threshold
+        self.overlay.on_mana_threshold_change = self.healer.set_mana_threshold
         self.overlay.on_max_hp_change = self.healer.set_max_hp
+        self.overlay.on_max_mana_change = self.healer.set_max_mana
     
     def start(self):
         """Start the bot loop."""
@@ -47,54 +50,78 @@ class TibiaBot:
     
     def run_loop(self):
         """Main bot loop - runs in background."""
+        import traceback
         wait = 1.0 / REFRESH_RATE
         
         while self.running:
-            if not self.active:
-                time.sleep(0.1)
-                continue
-            
-            window = self.tracker.update()
-            
-            if not window:
-                self.overlay.set_status("⚠️ Tibia not found")
-                time.sleep(0.5)
-                continue
-            
-            if self.tracker.has_changed():
-                self.reader.reset()
-            
-            img = self.capture.capture_window(window)
-            if img:
-                status = self.reader.read_status(img)
+            try:
+                # Update window position first (ALWAYS runs)
+                window = self.tracker.update()
                 
-                if status.hp or status.mana:
-                    self.overlay.set_hp(status.hp)
-                    self.overlay.set_mana(status.mana)
+                if not window:
+                    self.overlay.set_status("⚠️ Tibia not found")
+                    time.sleep(0.5)
+                    continue
+                
+                if self.tracker.has_changed():
+                    self.reader.reset()
+                
+                img = self.capture.capture_window(window)
+                if img:
+                    status = self.reader.read_status(img)
                     
-                    # Auto-detect max HP and update overlay
-                    if status.hp and self.healer.max_hp is None:
-                        self.healer.auto_detect_max_hp(status.hp)
-                        self.overlay.set_max_hp(self.healer.max_hp)
-                    
-                    # Check for healing
-                    if status.hp:
-                        heal_result = self.healer.check_and_heal(status.hp)
+                    if status.hp or status.mana:
+                        self.overlay.set_hp(status.hp)
+                        self.overlay.set_mana(status.mana)
                         
-                        if heal_result == "critical":
-                            self.overlay.set_status("🩹 Critical Heal!")
-                        elif heal_result == "normal":
-                            self.overlay.set_status("🩹 Healed!")
-                        elif self.healer.is_on_cooldown():
-                            cd = self.healer.get_cooldown_remaining()
-                            self.overlay.set_status(f"✅ Running (CD: {cd:.1f}s)")
+                        # Auto-detect max HP and Mana (always updates)
+                        if status.hp and self.healer.max_hp is None:
+                            self.healer.auto_detect_max_hp(status.hp)
+                            self.overlay.set_max_hp(self.healer.max_hp)
+                        
+                        if status.mana and self.healer.max_mana is None:
+                            self.healer.auto_detect_max_mana(status.mana)
+                            self.overlay.set_max_mana(self.healer.max_mana)
+                        
+                        # Only perform actions if bot is ACTIVE
+                        if self.active:
+                            # Check for healing (HP has priority)
+                            heal_result = None
+                            mana_result = False
+                            
+                            if status.hp:
+                                heal_result = self.healer.check_and_heal(status.hp)
+                            
+                            # Check for mana restore (only if not healing)
+                            if not heal_result and status.mana:
+                                mana_result = self.healer.check_and_restore_mana(status.mana)
+                            
+                            # Update status with action feedback
+                            if heal_result == "critical":
+                                self.overlay.set_status("🩹 Critical Heal!")
+                            elif heal_result == "normal":
+                                self.overlay.set_status("🩹 Healed!")
+                            elif mana_result:
+                                self.overlay.set_status("🔷 Mana Restored!")
+                            elif self.healer.is_on_cooldown():
+                                cd = self.healer.get_cooldown_remaining()
+                                self.overlay.set_status(f"✅ Running (CD: {cd:.1f}s)")
+                            else:
+                                hp_pct = self.healer.get_hp_percent(status.hp) if status.hp else 100
+                                mana_pct = self.healer.get_mana_percent(status.mana) if status.mana else 100
+                                self.overlay.set_status(f"✅ HP:{hp_pct:.0f}% M:{mana_pct:.0f}%")
                         else:
-                            hp_pct = self.healer.get_hp_percent(status.hp)
-                            self.overlay.set_status(f"✅ Running ({hp_pct:.0f}% HP)")
-                else:
-                    self.overlay.set_status("🔍 Reading...")
-            
-            time.sleep(wait)
+                             self.overlay.set_status("⏸️ Monitoring...")
+                    else:
+                        self.overlay.set_status("🔍 Reading..." if self.active else "⏸️ Monitoring...")
+                
+                time.sleep(wait)
+                
+            except Exception as e:
+                print(f"❌ ERROR in bot loop: {e}")
+                traceback.print_exc()
+                self.overlay.set_status(f"❌ Error: {str(e)[:30]}")
+                time.sleep(1)
     
     def run(self):
         """Start bot with overlay."""

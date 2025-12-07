@@ -1,6 +1,6 @@
 """
-Windify Bot - Auto Healer
-Handles automatic healing based on HP thresholds.
+Windify Bot - Auto Healer & Mana
+Handles automatic healing and mana restoration based on thresholds.
 """
 
 import time
@@ -18,9 +18,10 @@ class HealConfig:
 
 class AutoHealer:
     """
-    Manages auto-healing with two heal types:
+    Manages auto-healing and mana:
     - Normal Heal (default 75%, F1)
     - Critical Heal (default 50%, F2)
+    - Mana Restore (default 60%, F4)
     
     Has 1 second global cooldown between any spell.
     """
@@ -34,12 +35,16 @@ class AutoHealer:
         """
         self.press_key = press_key_callback
         
-        # Max HP (auto-detected or manually set)
+        # Max HP and Mana (auto-detected or manually set)
         self.max_hp: Optional[int] = None
+        self.max_mana: Optional[int] = None
         
-        # Heal configurations
-        self.heal = HealConfig(enabled=False, threshold=75, hotkey="F1")
-        self.critical_heal = HealConfig(enabled=False, threshold=50, hotkey="F2")
+        # Heal configurations - enabled by default
+        self.heal = HealConfig(enabled=True, threshold=75, hotkey="F1")
+        self.critical_heal = HealConfig(enabled=True, threshold=50, hotkey="F2")
+        
+        # Mana configuration - enabled by default
+        self.mana_restore = HealConfig(enabled=True, threshold=60, hotkey="F4")
         
         # Cooldown tracking
         self.last_cast_time = 0.0
@@ -49,17 +54,34 @@ class AutoHealer:
         if value > 0:
             self.max_hp = value
     
+    def set_max_mana(self, value: int):
+        """Set max Mana manually."""
+        if value > 0:
+            self.max_mana = value
+    
     def auto_detect_max_hp(self, current_hp: int):
         """Auto-detect max HP from first reading (if not set)."""
         if self.max_hp is None and current_hp and current_hp > 0:
             self.max_hp = current_hp
             print(f"📊 Max HP auto-detected: {self.max_hp}")
     
+    def auto_detect_max_mana(self, current_mana: int):
+        """Auto-detect max Mana from first reading (if not set)."""
+        if self.max_mana is None and current_mana and current_mana > 0:
+            self.max_mana = current_mana
+            print(f"📊 Max Mana auto-detected: {self.max_mana}")
+    
     def get_hp_percent(self, current_hp: int) -> float:
         """Calculate HP percentage."""
         if not self.max_hp or not current_hp:
             return 100.0
         return (current_hp / self.max_hp) * 100
+    
+    def get_mana_percent(self, current_mana: int) -> float:
+        """Calculate Mana percentage."""
+        if not self.max_mana or not current_mana:
+            return 100.0
+        return (current_mana / self.max_mana) * 100
     
     def is_on_cooldown(self) -> bool:
         """Check if we're still on cooldown."""
@@ -114,6 +136,9 @@ class AutoHealer:
     def toggle_critical_heal(self, enabled: bool):
         self.critical_heal.enabled = enabled
     
+    def toggle_mana_restore(self, enabled: bool):
+        self.mana_restore.enabled = enabled
+    
     def set_heal_threshold(self, value: int):
         if 1 <= value <= 99:
             self.heal.threshold = value
@@ -121,27 +146,46 @@ class AutoHealer:
     def set_critical_threshold(self, value: int):
         if 1 <= value <= 99:
             self.critical_heal.threshold = value
+    
+    def set_mana_threshold(self, value: int):
+        if 1 <= value <= 99:
+            self.mana_restore.threshold = value
+    
+    def check_and_restore_mana(self, current_mana: int) -> bool:
+        """
+        Check if mana restore is needed and cast if possible.
+        Returns True if mana was restored.
+        """
+        self.auto_detect_max_mana(current_mana)
+        
+        if not self.max_mana:
+            return False
+        
+        if self.is_on_cooldown():
+            return False
+        
+        mana_percent = self.get_mana_percent(current_mana)
+        
+        if self.mana_restore.enabled and mana_percent < self.mana_restore.threshold:
+            self.press_key(self.mana_restore.hotkey)
+            self.last_cast_time = time.time()
+            print(f"🔷 Mana restore: {self.mana_restore.hotkey} (threshold: {self.mana_restore.threshold}%)")
+            return True
+        
+        return False
 
 
 def press_key(key: str):
-    """Press a keyboard key using macOS."""
-    import subprocess
+    """Press a keyboard key using pyautogui."""
+    import pyautogui
     
-    # Map F-keys to keycodes
-    keycodes = {
-        "F1": 122, "F2": 120, "F3": 99, "F4": 118,
-        "F5": 96, "F6": 97, "F7": 98, "F8": 100,
-        "F9": 101, "F10": 109, "F11": 103, "F12": 111,
-    }
+    # Map key names if needed (pyautogui uses lowercase usually)
+    key = key.lower()
     
-    keycode = keycodes.get(key.upper())
-    if keycode:
-        script = f'''
-        tell application "System Events"
-            key code {keycode}
-        end tell
-        '''
-        subprocess.run(["osascript", "-e", script], capture_output=True)
+    try:
+        pyautogui.press(key)
+    except Exception as e:
+        print(f"Error pressing key {key}: {e}")
 
 
 # Test

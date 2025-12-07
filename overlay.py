@@ -29,9 +29,12 @@ class BotOverlay:
         # Callbacks for healer
         self.on_heal_toggle = None
         self.on_critical_toggle = None
+        self.on_mana_toggle = None
         self.on_heal_threshold_change = None
         self.on_critical_threshold_change = None
+        self.on_mana_threshold_change = None
         self.on_max_hp_change = None
+        self.on_max_mana_change = None
         
         self.root = None
         self.hp_var = None
@@ -39,10 +42,14 @@ class BotOverlay:
         self.status_var = None
         self.btn_text = None
         self.max_hp_var = None
+        self.max_mana_var = None
         self.heal_enabled = None
         self.critical_enabled = None
+        self.mana_enabled = None
         self.heal_threshold_var = None
         self.critical_threshold_var = None
+        self.mana_threshold_var = None
+        self.entries = []  # Track inputs to disable/enable
     
     def create_window(self):
         """Create the overlay window."""
@@ -94,6 +101,7 @@ class BotOverlay:
         max_hp_entry = tk.Entry(max_hp_frame, textvariable=self.max_hp_var, width=8, bg="#2a2a2a", fg=self.TEXT_COLOR, insertbackground=self.TEXT_COLOR)
         max_hp_entry.pack(side="right")
         max_hp_entry.bind("<Return>", self._on_max_hp_change)
+        self.entries.append(max_hp_entry)
         
         # Mana display
         self.mana_var = tk.StringVar(value="---")
@@ -108,7 +116,7 @@ class BotOverlay:
         tk.Label(main_frame, text="Auto Heal", fg=self.ACCENT_COLOR, bg=self.BG_COLOR, font=("Helvetica", 11, "bold")).pack(pady=(5, 3))
         
         # Normal Heal toggle
-        self.heal_enabled = tk.BooleanVar(value=False)
+        self.heal_enabled = tk.BooleanVar(value=True)
         self.heal_threshold_var = tk.StringVar(value="75")
         heal_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
         heal_frame.pack(fill="x", pady=2)
@@ -121,10 +129,11 @@ class BotOverlay:
         heal_entry = tk.Entry(heal_frame, textvariable=self.heal_threshold_var, width=4, bg="#2a2a2a", fg=self.TEXT_COLOR, insertbackground=self.TEXT_COLOR)
         heal_entry.pack(side="left")
         heal_entry.bind("<Return>", self._on_heal_threshold_change)
+        self.entries.append(heal_entry)
         tk.Label(heal_frame, text="%", fg=self.TEXT_COLOR, bg=self.BG_COLOR).pack(side="left")
         
         # Critical Heal toggle
-        self.critical_enabled = tk.BooleanVar(value=False)
+        self.critical_enabled = tk.BooleanVar(value=True)
         self.critical_threshold_var = tk.StringVar(value="50")
         crit_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
         crit_frame.pack(fill="x", pady=2)
@@ -137,7 +146,35 @@ class BotOverlay:
         crit_entry = tk.Entry(crit_frame, textvariable=self.critical_threshold_var, width=4, bg="#2a2a2a", fg=self.TEXT_COLOR, insertbackground=self.TEXT_COLOR)
         crit_entry.pack(side="left")
         crit_entry.bind("<Return>", self._on_critical_threshold_change)
+        self.entries.append(crit_entry)
         tk.Label(crit_frame, text="%", fg=self.TEXT_COLOR, bg=self.BG_COLOR).pack(side="left")
+        
+        # Mana Restore toggle
+        self.mana_enabled = tk.BooleanVar(value=True)
+        self.mana_threshold_var = tk.StringVar(value="60")
+        mana_restore_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
+        mana_restore_frame.pack(fill="x", pady=2)
+        tk.Checkbutton(
+            mana_restore_frame, text="Mana (F4)", variable=self.mana_enabled,
+            command=self._on_mana_toggle, bg=self.BG_COLOR, fg=self.MANA_COLOR,
+            selectcolor="#2a2a2a", activebackground=self.BG_COLOR
+        ).pack(side="left")
+        tk.Label(mana_restore_frame, text="@", fg=self.TEXT_COLOR, bg=self.BG_COLOR).pack(side="left", padx=5)
+        mana_entry = tk.Entry(mana_restore_frame, textvariable=self.mana_threshold_var, width=4, bg="#2a2a2a", fg=self.TEXT_COLOR, insertbackground=self.TEXT_COLOR)
+        mana_entry.pack(side="left")
+        mana_entry.bind("<Return>", self._on_mana_threshold_change)
+        self.entries.append(mana_entry)
+        tk.Label(mana_restore_frame, text="%", fg=self.TEXT_COLOR, bg=self.BG_COLOR).pack(side="left")
+        
+        # Max Mana input
+        max_mana_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
+        max_mana_frame.pack(fill="x", pady=2)
+        tk.Label(max_mana_frame, text="Max Mana:", fg=self.TEXT_COLOR, bg=self.BG_COLOR, width=10, anchor="w").pack(side="left")
+        self.max_mana_var = tk.StringVar(value="---")
+        max_mana_entry = tk.Entry(max_mana_frame, textvariable=self.max_mana_var, width=8, bg="#2a2a2a", fg=self.TEXT_COLOR, insertbackground=self.TEXT_COLOR)
+        max_mana_entry.pack(side="right")
+        max_mana_entry.bind("<Return>", self._on_max_mana_change)
+        self.entries.append(max_mana_entry)
         
         self._add_separator(main_frame)
         
@@ -167,12 +204,22 @@ class BotOverlay:
             self.bot_active = False
             self.btn_text.set("▶️ Start")
             self.set_status("⏸️ Stopped")
+            
+            # Enable inputs
+            for entry in self.entries:
+                entry.configure(state="normal", bg="#2a2a2a")
+            
             if self.on_stop:
                 self.on_stop()
         else:
             self.bot_active = True
             self.btn_text.set("⏹️ Stop")
             self.set_status("🔍 Searching...")
+            
+            # Disable inputs
+            for entry in self.entries:
+                entry.configure(state="disabled", bg="#1a1a1a")
+            
             if self.on_start:
                 self.on_start()
     
@@ -183,6 +230,10 @@ class BotOverlay:
     def _on_critical_toggle(self):
         if self.on_critical_toggle:
             self.on_critical_toggle(self.critical_enabled.get())
+    
+    def _on_mana_toggle(self):
+        if self.on_mana_toggle:
+            self.on_mana_toggle(self.mana_enabled.get())
     
     def _on_heal_threshold_change(self, event=None):
         try:
@@ -208,6 +259,22 @@ class BotOverlay:
         except ValueError:
             pass
     
+    def _on_mana_threshold_change(self, event=None):
+        try:
+            val = int(self.mana_threshold_var.get())
+            if self.on_mana_threshold_change:
+                self.on_mana_threshold_change(val)
+        except ValueError:
+            pass
+    
+    def _on_max_mana_change(self, event=None):
+        try:
+            val = int(self.max_mana_var.get())
+            if self.on_max_mana_change:
+                self.on_max_mana_change(val)
+        except ValueError:
+            pass
+    
     def set_status(self, status: str):
         if self.status_var:
             self.status_var.set(status)
@@ -223,6 +290,10 @@ class BotOverlay:
     def set_max_hp(self, value: int):
         if self.max_hp_var and value:
             self.max_hp_var.set(str(value))
+    
+    def set_max_mana(self, value: int):
+        if self.max_mana_var and value:
+            self.max_mana_var.set(str(value))
     
     def update(self):
         if self.root:
