@@ -83,5 +83,18 @@ class TestAutoEater(unittest.TestCase):
         self.eater.check_and_eat()
         self.mock_press.assert_not_called()
 
+    def test_toggle_initial_delay(self):
+        """Enabling should set timer to future (not 0)."""
+        self.eater.enabled = False
+        self.eater.toggle(True)
+        
+        # Timer should be in future
+        self.assertGreater(self.eater.next_eat_time, time.time())
+        
+        # Should not eat immediately
+        self.mock_press.reset_mock()
+        self.eater.check_and_eat()
+        self.mock_press.assert_not_called()
+
 if __name__ == '__main__':
     unittest.main()

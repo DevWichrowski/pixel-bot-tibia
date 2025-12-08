@@ -37,17 +37,20 @@ class AutoEater:
         if food_key in self.FOODS:
             self.current_food = food_key
             print(f"🍖 Food set to: {self.FOODS[food_key].name} ({self.FOODS[food_key].duration}s)")
-            # Reset timer so we eat immediately/soon after changing type?
-            # Or keep existing timer? Let's eat immediately to be safe.
-            self.next_eat_time = 0.0
+            # Do not reset timer when changing food type, unless it was 0 (not started)
     
     def toggle(self, enabled: bool):
         """Enable/Disable auto eater."""
         self.enabled = enabled
         if enabled:
-            # When enabling, eat immediately
-            self.next_eat_time = 0.0
-            print("🍖 Auto Eater enabled")
+            # When enabling, DO NOT eat immediately. Wait for interval first.
+            food = self.FOODS[self.current_food]
+            duration = food.duration * 2
+            delay = duration + random.uniform(1.0, 6.0)
+            self.next_eat_time = time.time() + delay
+            
+            next_time_str = time.strftime("%H:%M:%S", time.localtime(self.next_eat_time))
+            print(f"🍖 Auto Eater enabled. First meal at {next_time_str} (in {int(delay)}s)")
         else:
             print("🍖 Auto Eater disabled")
             

@@ -43,6 +43,9 @@ class TibiaStyleOverlay:
         # Tab colors
         "tab_active": "#3a3a3a",
         "tab_inactive": "#252525",
+        
+        # Extra features
+        "extra": "#b044c5",
     }
     
     def __init__(self):
@@ -75,6 +78,10 @@ class TibiaStyleOverlay:
         self.on_food_type_change: Optional[Callable[[str], None]] = None
         self.on_eater_hotkey_change: Optional[Callable[[str], None]] = None
         
+        # Auto Haste callbacks
+        self.on_haste_toggle: Optional[Callable[[bool], None]] = None
+        self.on_haste_hotkey_change: Optional[Callable[[str], None]] = None
+        
         # UI variables
         self.status_var: Optional[tk.StringVar] = None
         self.hp_var: Optional[tk.StringVar] = None
@@ -99,6 +106,10 @@ class TibiaStyleOverlay:
         self.eater_enabled = None
         self.food_type_var = None
         self.eater_hotkey_var = None
+        
+        # Haste vars
+        self.haste_enabled = None
+        self.haste_hotkey_var = None
         
         # Region selector
         self.region_selector = RegionSelector()
@@ -125,102 +136,144 @@ class TibiaStyleOverlay:
         self._capture_callback = None
     
     def create_window(self):
-        """Create the main overlay window."""
+        """Create the overlay window."""
         self.root = tk.Tk()
-        self.root.title("⚔ Windify")
-        self.root.configure(bg=self.THEME["border_light"])
+        self.root.title("Tibia Bot Overlay")
+        
+        # Always on top
         self.root.attributes("-topmost", True)
-        self.root.resizable(False, False)
+        self.root.overrideredirect(True)  # No window border
+        self.root.configure(bg=self.THEME["bg"])
         
-        # Main frame with border effect
-        outer_frame = tk.Frame(self.root, bg=self.THEME["border_light"])
-        outer_frame.pack(fill="both", expand=True, padx=2, pady=2)
+        # Initial size and position (top-left)
+        self.root.geometry("260x520+20+100")  # Increased height for new features
         
-        inner_frame = tk.Frame(outer_frame, bg=self.THEME["border_dark"])
-        inner_frame.pack(fill="both", expand=True, padx=1, pady=1)
+        # Main Frame with border
+        main_frame = tk.Frame(
+            self.root, 
+            bg=self.THEME["bg"],
+            highlightbackground=self.THEME["border_light"], # Changed from "border" to "border_light" to match theme
+            highlightthickness=1
+        )
+        main_frame.pack(fill="both", expand=True)
         
-        main = tk.Frame(inner_frame, bg=self.THEME["bg"], padx=10, pady=8)
-        main.pack(fill="both", expand=True, padx=1, pady=1)
+        # Header (Draggable)
+        self._create_header(main_frame)
         
-        # Header
-        self._create_header(main)
+        # Tab Buttons
+        self._create_tabs(main_frame)
         
-        # Tabs
-        self._create_tabs(main)
+        # Content Area
+        self.content_frame = tk.Frame(main_frame, bg=self.THEME["bg"])
+        self.content_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
-        # Tab content area
-        self.content_frame = tk.Frame(main, bg=self.THEME["bg"])
-        self.content_frame.pack(fill="both", expand=True)
-        
-        # Create tab contents
+        # Create tabs content
         self._create_status_tab()
         self._create_config_tab()
         
-        # Show initial tab
+        # Show default tab
         self._show_tab("status")
         
-        # Position window
-        self.root.update_idletasks()
-        screen_w = self.root.winfo_screenwidth()
-        win_w = self.root.winfo_width()
-        self.root.geometry(f"+{screen_w - win_w - 20}+50")
-        
-        self.running = True
+        self.running = True # Added this line as it was in the original create_window
     
     def _create_header(self, parent):
-        """Create header with title."""
-        header = tk.Frame(parent, bg=self.THEME["bg"])
-        header.pack(fill="x", pady=(0, 8))
+        """Create header with drag functionality."""
+        header = tk.Frame(parent, bg=self.THEME["bg_dark"], height=28)
+        header.pack(fill="x")
         
-        # Title with pixel-style appearance
-        title = tk.Label(
-            header,
-            text="⚔ Windify Helper",
-            font=("Courier", 14, "bold"),
-            fg=self.THEME["accent_bright"],
-            bg=self.THEME["bg"]
+        # Title
+        title_label = tk.Label(
+            header, 
+            text="Windify Bot", 
+            font=("Courier", 10, "bold"),
+            fg=self.THEME["accent"],
+            bg=self.THEME["bg_dark"]
         )
-        title.pack()
-    
+        title_label.pack(side="left", padx=8)
+        
+        # Close button
+        close_btn = tk.Button(
+            header,
+            text="✕",
+            font=("Arial", 9),
+            fg=self.THEME["text_dim"],
+            bg=self.THEME["bg_dark"],
+            activebackground=self.THEME["error"],
+            activeforeground="white",
+            relief="flat",
+            bd=0,
+            command=self.root.destroy,
+            width=3
+        )
+        close_btn.pack(side="right")
+        
+        # Drag logic
+        def start_move(event):
+            self.root.x = event.x
+            self.root.y = event.y
+
+        def stop_move(event):
+            self.root.x = None
+            self.root.y = None
+
+        def do_move(event):
+            deltax = event.x - self.root.x
+            deltay = event.y - self.root.y
+            x = self.root.winfo_x() + deltax
+            y = self.root.winfo_y() + deltay
+            self.root.geometry(f"+{x}+{y}")
+
+        header.bind("<ButtonPress-1>", start_move)
+        header.bind("<ButtonRelease-1>", stop_move)
+        header.bind("<B1-Motion>", do_move)
+        title_label.bind("<ButtonPress-1>", start_move)
+        title_label.bind("<ButtonRelease-1>", stop_move)
+        title_label.bind("<B1-Motion>", do_move)
+
     def _create_tabs(self, parent):
-        """Create tab buttons."""
-        tab_frame = tk.Frame(parent, bg=self.THEME["bg"])
-        tab_frame.pack(fill="x", pady=(0, 8))
+        """Create navigation tabs."""
+        tabs_frame = tk.Frame(parent, bg=self.THEME["bg"])
+        tabs_frame.pack(fill="x", pady=5)
         
-        tabs = [
-            ("status", "📊 Status"),
-            ("config", "⚙ Config"),
-        ]
+        # Status Tab Button
+        self.tab_buttons["status"] = tk.Button(
+            tabs_frame,
+            text="STATUS",
+            font=("Courier", 9, "bold"),
+            fg=self.THEME["text"],
+            bg=self.THEME["bg"],
+            relief="flat",
+            command=lambda: self._show_tab("status"),
+            width=10
+        )
+        self.tab_buttons["status"].pack(side="left", padx=5)
         
-        for tab_id, label in tabs:
-            btn = tk.Button(
-                tab_frame,
-                text=label,
-                font=("Courier", 10),
-                fg=self.THEME["text"],
-                bg=self.THEME["tab_inactive"],
-                activebackground=self.THEME["tab_active"],
-                activeforeground=self.THEME["text_bright"],
-                relief="flat",
-                bd=0,
-                padx=15,
-                pady=5,
-                cursor="hand2",
-                command=lambda t=tab_id: self._show_tab(t)
-            )
-            btn.pack(side="left", padx=2)
-            self.tab_buttons[tab_id] = btn
+        # Config Tab Button
+        self.tab_buttons["config"] = tk.Button(
+            tabs_frame,
+            text="CONFIG",
+            font=("Courier", 9, "bold"),
+            fg=self.THEME["text_dim"],  # Inactive
+            bg=self.THEME["bg"],
+            relief="flat",
+            command=lambda: self._show_tab("config"),
+            width=10
+        )
+        self.tab_buttons["config"].pack(side="left", padx=5)
+        
+        # Separator
+        tk.Frame(parent, height=1, bg=self.THEME["border_dark"]).pack(fill="x")
     
     def _show_tab(self, tab_id: str):
         """Switch to specified tab."""
         self.current_tab = tab_id
         
         # Update button styles
-        for tid, btn in self.tab_buttons.items():
-            if tid == tab_id:
-                btn.configure(bg=self.THEME["tab_active"], fg=self.THEME["text_bright"])
+        for name, btn in self.tab_buttons.items():
+            if name == tab_id:
+                btn.configure(fg=self.THEME["accent"])
             else:
-                btn.configure(bg=self.THEME["tab_inactive"], fg=self.THEME["text"])
+                btn.configure(fg=self.THEME["text_dim"])
         
         # Show/hide frames
         for tid, frame in self.tab_frames.items():
@@ -234,83 +287,55 @@ class TibiaStyleOverlay:
         frame = tk.Frame(self.content_frame, bg=self.THEME["bg"])
         self.tab_frames["status"] = frame
         
-        # Status line
-        self.status_var = tk.StringVar(value="⏸️ Stopped")
-        status_frame = tk.Frame(frame, bg=self.THEME["bg"])
-        status_frame.pack(fill="x", pady=2)
-        tk.Label(status_frame, text="Status:", font=("Courier", 10), fg=self.THEME["text_dim"], bg=self.THEME["bg"], width=10, anchor="w").pack(side="left")
-        tk.Label(status_frame, textvariable=self.status_var, font=("Courier", 10), fg=self.THEME["text"], bg=self.THEME["bg"]).pack(side="left")
+        # Status Label
+        self.status_var = tk.StringVar(value="Waiting...")
+        status_lbl = tk.Label(
+            frame, 
+            textvariable=self.status_var,
+            font=("Courier", 10),
+            fg=self.THEME["text"],
+            bg=self.THEME["bg"]
+        )
+        status_lbl.pack(pady=5)
         
         self._add_separator(frame)
         
         # HP Display
-        self.hp_var = tk.StringVar(value="---/---")
         hp_frame = tk.Frame(frame, bg=self.THEME["bg"])
         hp_frame.pack(fill="x", pady=2)
-        
-        tk.Label(
-            hp_frame,
-            text="❤️ HP:",
-            font=("Courier", 11, "bold"),
-            fg=self.THEME["hp"],
-            bg=self.THEME["bg"],
-            width=10,
-            anchor="w"
-        ).pack(side="left")
-        
-        tk.Label(
-            hp_frame,
-            textvariable=self.hp_var,
-            font=("Courier", 11, "bold"),
-            fg=self.THEME["hp"],
-            bg=self.THEME["bg"]
-        ).pack(side="right")
+        tk.Label(hp_frame, text="HP:", font=("Courier", 10, "bold"), fg=self.THEME["hp"], bg=self.THEME["bg"], width=5, anchor="w").pack(side="left")
+        self.hp_var = tk.StringVar(value="--- / ---")
+        tk.Label(hp_frame, textvariable=self.hp_var, font=("Courier", 10), fg=self.THEME["text_bright"], bg=self.THEME["bg"]).pack(side="right")
         
         # Mana Display
-        self.mana_var = tk.StringVar(value="---/---")
         mana_frame = tk.Frame(frame, bg=self.THEME["bg"])
         mana_frame.pack(fill="x", pady=2)
-        
-        tk.Label(
-            mana_frame,
-            text="🔷 Mana:",
-            font=("Courier", 11, "bold"),
-            fg=self.THEME["mana"],
-            bg=self.THEME["bg"],
-            width=10,
-            anchor="w"
-        ).pack(side="left")
-        
-        tk.Label(
-            mana_frame,
-            textvariable=self.mana_var,
-            font=("Courier", 11, "bold"),
-            fg=self.THEME["mana"],
-            bg=self.THEME["bg"]
-        ).pack(side="right")
+        tk.Label(mana_frame, text="MP:", font=("Courier", 10, "bold"), fg=self.THEME["mana"], bg=self.THEME["bg"], width=5, anchor="w").pack(side="left")
+        self.mana_var = tk.StringVar(value="--- / ---")
+        tk.Label(mana_frame, textvariable=self.mana_var, font=("Courier", 10), fg=self.THEME["text_bright"], bg=self.THEME["bg"]).pack(side="right")
         
         self._add_separator(frame)
         
-        # Auto Heal Section
+        # Controls Header
         tk.Label(
             frame,
-            text="Auto Heal",
+            text="Controls",
             font=("Courier", 10, "bold"),
             fg=self.THEME["accent"],
             bg=self.THEME["bg"]
-        ).pack(pady=(5, 3))
+        ).pack(pady=(5, 5))
         
         # Heal toggle
         self.heal_enabled = tk.BooleanVar(value=True)
         self.heal_threshold_var = tk.StringVar(value="75")
         self._create_heal_row(frame, "Heal (F1)", self.heal_enabled, self.heal_threshold_var, 
-                              self._on_heal_toggle, self._on_heal_threshold_change, self.THEME["text"])
+                              self._on_heal_toggle, self._on_heal_threshold_change, self.THEME["hp"])
         
-        # Critical toggle
+        # Critical heal toggle
         self.critical_enabled = tk.BooleanVar(value=True)
         self.critical_threshold_var = tk.StringVar(value="50")
-        self._create_heal_row(frame, "Critical (F2)", self.critical_enabled, self.critical_threshold_var,
-                              self._on_critical_toggle, self._on_critical_threshold_change, self.THEME["hp"])
+        self._create_heal_row(frame, "Crit (F2)", self.critical_enabled, self.critical_threshold_var,
+                              self._on_critical_toggle, self._on_critical_threshold_change, self.THEME["error"])
         
         # Mana toggle
         self.mana_enabled = tk.BooleanVar(value=True)
@@ -320,7 +345,11 @@ class TibiaStyleOverlay:
         
         # Auto Eater toggle
         self.eater_enabled = tk.BooleanVar(value=False)
-        self._create_simple_toggle(frame, "Auto Eater", self.eater_enabled, self._on_eater_toggle, self.THEME["accent_bright"])
+        self._create_simple_toggle(frame, "Auto Eater", self.eater_enabled, self._on_eater_toggle, self.THEME["accent_bright"], self.eater_hotkey_var)
+        
+        # Auto Haste toggle
+        self.haste_enabled = tk.BooleanVar(value=False)
+        self._create_simple_toggle(frame, "Auto Haste", self.haste_enabled, self._on_haste_toggle, self.THEME["extra"], self.haste_hotkey_var)
         
         self._add_separator(frame)
         
@@ -350,8 +379,8 @@ class TibiaStyleOverlay:
             bg=self.THEME["bg"]
         )
     
-    def _create_simple_toggle(self, parent, label, enabled_var, toggle_cmd, color):
-        """Create a simple toggle row (no inputs)."""
+    def _create_simple_toggle(self, parent, label, enabled_var, toggle_cmd, color, hotkey_var=None):
+        """Create a simple toggle row (optional hotkey display)."""
         row = tk.Frame(parent, bg=self.THEME["bg"])
         row.pack(fill="x", pady=2)
         
@@ -367,6 +396,11 @@ class TibiaStyleOverlay:
             activebackground=self.THEME["bg"]
         )
         cb.pack(side="left")
+        
+        if hotkey_var:
+            tk.Label(row, text="[", fg=self.THEME["text_dim"], bg=self.THEME["bg"]).pack(side="left", padx=(5,0))
+            tk.Label(row, textvariable=hotkey_var, font=("Courier", 10, "bold"), fg=self.THEME["text_bright"], bg=self.THEME["bg"]).pack(side="left")
+            tk.Label(row, text="]", fg=self.THEME["text_dim"], bg=self.THEME["bg"]).pack(side="left")
     
     def _create_heal_row(self, parent, label, enabled_var, threshold_var, toggle_cmd, threshold_cmd, color):
         """Create a heal toggle row."""
@@ -471,6 +505,21 @@ class TibiaStyleOverlay:
         # Eater Hotkey
         self.eater_hotkey_var = tk.StringVar(value="]")
         self._create_hotkey_row(frame, "Food Key:", self.eater_hotkey_var, "eater")
+
+        self._add_separator(frame)
+
+        # Auto Haste Config
+        tk.Label(
+            frame,
+            text="Haste Configuration",
+            font=("Courier", 10, "bold"),
+            fg=self.THEME["accent"],
+            bg=self.THEME["bg"]
+        ).pack(pady=(5, 8))
+        
+        # Haste Hotkey
+        self.haste_hotkey_var = tk.StringVar(value="x")
+        self._create_hotkey_row(frame, "Haste Key:", self.haste_hotkey_var, "haste")
         
         self._add_separator(frame)
         
@@ -517,65 +566,41 @@ class TibiaStyleOverlay:
         row = tk.Frame(parent, bg=self.THEME["bg"])
         row.pack(fill="x", pady=2, padx=5)
         
-        tk.Label(
-            row,
-            text=label,
-            font=("Courier", 10),
-            fg=self.THEME["text"],
-            bg=self.THEME["bg"],
-            width=10,
-            anchor="w"
-        ).pack(side="left")
+        tk.Label(row, text=label, font=("Courier", 10), fg=self.THEME["text"], bg=self.THEME["bg"], width=10, anchor="w").pack(side="left")
         
-        # Current hotkey display
-        hotkey_label = tk.Label(
+        btn = tk.Button(
             row,
             textvariable=var,
-            font=("Courier", 10, "bold"),
-            fg=self.THEME["accent_bright"],
-            bg=self.THEME["bg_dark"],
-            width=6,
-            relief="flat"
-        )
-        hotkey_label.pack(side="left", padx=5)
-        
-        # Set button
-        set_btn = tk.Button(
-            row,
-            text="⌨ Set",
-            font=("Courier", 9),
+            font=("Courier", 9, "bold"),
             fg=self.THEME["text_bright"],
-            bg=self.THEME["bg_light"],
+            bg=self.THEME["bg_dark"],
+            activebackground=self.THEME["accent"],
+            activeforeground=self.THEME["bg"],
             relief="flat",
-            cursor="hand2",
-            command=lambda: self._capture_hotkey(var, hotkey_type, set_btn)
+            width=8,
+            command=lambda: self._capture_hotkey(var, hotkey_type)
         )
-        set_btn.pack(side="right")
+        btn.pack(side="left")
     
-    def _capture_hotkey(self, var: tk.StringVar, hotkey_type: str, button: tk.Button):
+    def _capture_hotkey(self, string_var, hotkey_type):
         """Capture next key press and set as hotkey."""
-        # Change button to show we're waiting
-        original_text = button.cget("text")
-        button.configure(text="Press key...", bg=self.THEME["accent"])
+        if self._capturing_hotkey:
+            return
+            
+        self._capturing_hotkey = True
+        self.overlay_status_backup = self.status_var.get()
+        self.status_var.set("Press any key...")
         
         def on_key(event):
-            # Get key name
             key = event.keysym
+            # Cleanup key names
+            if len(key) == 1:
+                key = key.lower()
             
-            # Convert to uppercase for F-keys, keep as-is for others
-            if key.startswith("F") and key[1:].isdigit():
-                key = key.upper()
-            elif len(key) == 1:
-                key = key.upper()
-            
-            # Update variable
-            var.set(key)
-            
-            # Restore button
-            button.configure(text=original_text, bg=self.THEME["bg_light"])
-            
-            # Unbind
+            string_var.set(key)
+            self._capturing_hotkey = False
             self.root.unbind("<Key>")
+            self.status_var.set(self.overlay_status_backup)
             
             # Call appropriate callback
             if hotkey_type == "heal" and self.on_heal_hotkey_change:
@@ -586,12 +611,14 @@ class TibiaStyleOverlay:
                 self.on_mana_hotkey_change(key)
             elif hotkey_type == "eater" and self.on_eater_hotkey_change:
                 self.on_eater_hotkey_change(key)
+            elif hotkey_type == "haste" and self.on_haste_hotkey_change:
+                self.on_haste_hotkey_change(key)
             
             print(f"🔑 {hotkey_type} hotkey set to: {key}")
         
         # Bind key press
         self.root.bind("<Key>", on_key)
-        self.root.focus_force()
+        self.root.focus_force() # Added this line as it was in the original _capture_hotkey
     
     def _add_separator(self, parent):
         """Add a thin separator line."""
@@ -733,6 +760,10 @@ class TibiaStyleOverlay:
     def _on_eater_toggle(self):
         if self.on_eater_toggle:
             self.on_eater_toggle(self.eater_enabled.get())
+            
+    def _on_haste_toggle(self):
+        if self.on_haste_toggle:
+            self.on_haste_toggle(self.haste_enabled.get())
             
     def _on_food_type_change(self, value):
         if self.on_food_type_change:

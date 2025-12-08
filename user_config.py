@@ -4,6 +4,7 @@ Manages persistent user settings stored in JSON.
 """
 
 import json
+import os
 from pathlib import Path
 from dataclasses import dataclass, asdict, field
 from typing import Optional, Tuple, Dict, Any
@@ -50,11 +51,19 @@ class EaterConfig:
 
 
 @dataclass
+class HasteConfig:
+    """Configuration for auto haste."""
+    enabled: bool = False
+    hotkey: str = "x"
+
+
+@dataclass
 class UserConfig:
     """Complete user configuration."""
     regions: RegionConfig = field(default_factory=RegionConfig)
     healer: HealerConfig = field(default_factory=HealerConfig)
     eater: EaterConfig = field(default_factory=EaterConfig)
+    haste: HasteConfig = field(default_factory=HasteConfig)
 
 
 class ConfigManager:
@@ -75,25 +84,23 @@ class ConfigManager:
     
     def load(self) -> UserConfig:
         """Load configuration from JSON file."""
-        if self.config_path.exists():
-            try:
-                with open(self.config_path, 'r') as f:
-                    data = json.load(f)
-                self._config = self._from_dict(data)
-                print(f"✅ Config loaded from {self.config_path}")
-            except Exception as e:
-                print(f"⚠️ Failed to load config: {e}")
-                self._config = UserConfig()
-        else:
+        if not os.path.exists(self.config_path):
+            self._config = UserConfig()
+            return self._config
+
+        try:
+            with open(self.config_path, 'r') as f:
+                data = json.load(f)
+            self._config = self._from_dict(data)
+            print(f"✅ Config loaded from {self.config_path}")
+        except Exception as e:
+            print(f"⚠️ Failed to load config: {e}")
             self._config = UserConfig()
         
         return self._config
     
     def save(self) -> bool:
         """Save current configuration to JSON file."""
-        if self._config is None:
-            return False
-        
         try:
             data = self._to_dict(self._config)
             with open(self.config_path, 'w') as f:
@@ -113,18 +120,18 @@ class ConfigManager:
     
     def reset_regions(self) -> None:
         """Reset only region configuration."""
-        if self._config:
-            self._config.regions = RegionConfig()
-            self.save()
+        self._config.regions.hp_region = None
+        self._config.regions.mana_region = None
+        self.save()
     
     def set_hp_region(self, region: Tuple[int, int, int, int]) -> None:
         """Set HP region and save."""
-        self.config.regions.hp_region = region
+        self._config.regions.hp_region = region
         self.save()
     
     def set_mana_region(self, region: Tuple[int, int, int, int]) -> None:
         """Set Mana region and save."""
-        self.config.regions.mana_region = region
+        self._config.regions.mana_region = region
         self.save()
     
     def is_configured(self) -> bool:
@@ -139,7 +146,8 @@ class ConfigManager:
                 "mana_region": list(config.regions.mana_region) if config.regions.mana_region else None,
             },
             "healer": asdict(config.healer),
-            "eater": asdict(config.eater)
+            "eater": asdict(config.eater),
+            "haste": asdict(config.haste)
         }
     
     def _from_dict(self, data: Dict[str, Any]) -> UserConfig:
@@ -147,6 +155,7 @@ class ConfigManager:
         regions_data = data.get("regions", {})
         healer_data = data.get("healer", {})
         eater_data = data.get("eater", {})
+        haste_data = data.get("haste", {})
         
         hp_region = regions_data.get("hp_region")
         mana_region = regions_data.get("mana_region")
@@ -157,7 +166,8 @@ class ConfigManager:
                 mana_region=tuple(mana_region) if mana_region else None,
             ),
             healer=HealerConfig(**healer_data) if healer_data else HealerConfig(),
-            eater=EaterConfig(**eater_data) if eater_data else EaterConfig()
+            eater=EaterConfig(**eater_data) if eater_data else EaterConfig(),
+            haste=HasteConfig(**haste_data) if haste_data else HasteConfig()
         )
 
 
