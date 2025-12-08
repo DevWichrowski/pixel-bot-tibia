@@ -30,7 +30,11 @@
     "hotkey": "]"
   },
   "haste": {
-    "enabled": true,
+    "enabled": false,
     "hotkey": "x"
+  },
+  "skinner": {
+    "enabled": true,
+    "hotkey": "["
   }
 }

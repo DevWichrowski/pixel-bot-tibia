@@ -58,12 +58,20 @@ class HasteConfig:
 
 
 @dataclass
+class SkinnerConfig:
+    """Configuration for auto skinner."""
+    enabled: bool = False
+    hotkey: str = "["
+
+
+@dataclass
 class UserConfig:
     """Complete user configuration."""
     regions: RegionConfig = field(default_factory=RegionConfig)
     healer: HealerConfig = field(default_factory=HealerConfig)
     eater: EaterConfig = field(default_factory=EaterConfig)
     haste: HasteConfig = field(default_factory=HasteConfig)
+    skinner: SkinnerConfig = field(default_factory=SkinnerConfig)
 
 
 class ConfigManager:
@@ -147,7 +155,8 @@ class ConfigManager:
             },
             "healer": asdict(config.healer),
             "eater": asdict(config.eater),
-            "haste": asdict(config.haste)
+            "haste": asdict(config.haste),
+            "skinner": asdict(config.skinner)
         }
     
     def _from_dict(self, data: Dict[str, Any]) -> UserConfig:
@@ -156,6 +165,7 @@ class ConfigManager:
         healer_data = data.get("healer", {})
         eater_data = data.get("eater", {})
         haste_data = data.get("haste", {})
+        skinner_data = data.get("skinner", {})
         
         hp_region = regions_data.get("hp_region")
         mana_region = regions_data.get("mana_region")
@@ -167,7 +177,8 @@ class ConfigManager:
             ),
             healer=HealerConfig(**healer_data) if healer_data else HealerConfig(),
             eater=EaterConfig(**eater_data) if eater_data else EaterConfig(),
-            haste=HasteConfig(**haste_data) if haste_data else HasteConfig()
+            haste=HasteConfig(**haste_data) if haste_data else HasteConfig(),
+            skinner=SkinnerConfig(**skinner_data) if skinner_data else SkinnerConfig()
         )
 
 

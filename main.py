@@ -13,6 +13,7 @@ from overlay import TibiaStyleOverlay
 from healer import AutoHealer, press_key
 from eater import AutoEater
 from haste import AutoHaste
+from skinner import AutoSkinner
 from user_config import ConfigManager
 
 
@@ -24,6 +25,7 @@ class TibiaBot:
         self.healer = AutoHealer(press_key)
         self.eater = AutoEater(press_key)
         self.haste = AutoHaste(press_key)
+        self.skinner = AutoSkinner(press_key)
         self.running = False
         self.active = False
         self.sct = mss.mss()  # Screen capture
@@ -70,6 +72,11 @@ class TibiaBot:
         haste_cfg = config.haste
         self.haste.enabled = haste_cfg.enabled
         self.haste.hotkey = haste_cfg.hotkey
+        
+        # Load skinner config
+        skinner_cfg = config.skinner
+        self.skinner.toggle(skinner_cfg.enabled)
+        self.skinner.hotkey = skinner_cfg.hotkey
     
     def _setup_callbacks(self):
         """Connect overlay controls to bot functionality."""
@@ -89,6 +96,10 @@ class TibiaBot:
         # Haste callbacks
         self.overlay.on_haste_toggle = self._on_haste_toggle
         self.overlay.on_haste_hotkey_change = self._on_haste_hotkey_change
+        
+        # Skinner callbacks
+        self.overlay.on_skinner_toggle = self._on_skinner_toggle
+        self.overlay.on_skinner_hotkey_change = self._on_skinner_hotkey_change
         
         # Hotkey change callbacks
         self.overlay.on_heal_hotkey_change = self._on_heal_hotkey_change
@@ -139,6 +150,16 @@ class TibiaBot:
     def _on_haste_hotkey_change(self, key: str):
         self.haste.hotkey = key
         self.config_manager.config.haste.hotkey = key
+        self.config_manager.save()
+    
+    def _on_skinner_toggle(self, enabled: bool):
+        self.skinner.toggle(enabled)
+        self.config_manager.config.skinner.enabled = enabled
+        self.config_manager.save()
+        
+    def _on_skinner_hotkey_change(self, key: str):
+        self.skinner.hotkey = key
+        self.config_manager.config.skinner.hotkey = key
         self.config_manager.save()
         
     def _on_heal_threshold_change(self, value: int):
@@ -200,12 +221,14 @@ class TibiaBot:
             return False
         
         self.active = True
+        self.skinner.start()  # Start listener
         self.overlay.set_status("🔍 Searching...")
         return True
     
     def stop(self):
         """Stop the bot loop."""
         self.active = False
+        self.skinner.stop()  # Stop listener
         self.overlay.set_status("⏸️ Stopped")
         self.overlay.set_hp(None)
         self.overlay.set_mana(None)
@@ -227,6 +250,7 @@ class TibiaBot:
                 if self.active:
                     self.eater.check_and_eat()
                     self.haste.check_and_cast()
+                    # auto skinner runs in its own thread via listener
 
                 # Only read if regions are configured
                 if not self.reader.is_configured():
@@ -308,6 +332,8 @@ class TibiaBot:
              self.overlay.eater_hotkey_var.set(config.eater.hotkey)
         if self.overlay.haste_hotkey_var:
              self.overlay.haste_hotkey_var.set(config.haste.hotkey)
+        if self.overlay.skinner_hotkey_var:
+             self.overlay.skinner_hotkey_var.set(config.skinner.hotkey)
              
         # Set food type
         if self.overlay.food_type_var:
@@ -319,6 +345,7 @@ class TibiaBot:
         if self.overlay.mana_enabled: self.overlay.mana_enabled.set(config.healer.mana_enabled)
         if self.overlay.eater_enabled: self.overlay.eater_enabled.set(config.eater.enabled)
         if self.overlay.haste_enabled: self.overlay.haste_enabled.set(config.haste.enabled)
+        if self.overlay.skinner_enabled: self.overlay.skinner_enabled.set(config.skinner.enabled)
         
         if self.overlay.heal_threshold_var: self.overlay.heal_threshold_var.set(str(config.healer.heal_threshold))
         if self.overlay.critical_threshold_var: self.overlay.critical_threshold_var.set(str(config.healer.critical_threshold))

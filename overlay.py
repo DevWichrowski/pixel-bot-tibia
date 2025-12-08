@@ -82,6 +82,10 @@ class TibiaStyleOverlay:
         self.on_haste_toggle: Optional[Callable[[bool], None]] = None
         self.on_haste_hotkey_change: Optional[Callable[[str], None]] = None
         
+        # Auto Skinner callbacks
+        self.on_skinner_toggle: Optional[Callable[[bool], None]] = None
+        self.on_skinner_hotkey_change: Optional[Callable[[str], None]] = None
+        
         # UI variables
         self.status_var: Optional[tk.StringVar] = None
         self.hp_var: Optional[tk.StringVar] = None
@@ -110,6 +114,10 @@ class TibiaStyleOverlay:
         # Haste vars
         self.haste_enabled = None
         self.haste_hotkey_var = None
+        
+        # Skinner vars
+        self.skinner_enabled = None
+        self.skinner_hotkey_var = None
         
         # Region selector
         self.region_selector = RegionSelector()
@@ -147,6 +155,14 @@ class TibiaStyleOverlay:
         
         # Initial size and position (top-left)
         self.root.geometry("260x520+20+100")  # Increased height for new features
+        
+        # Initialize shared UI variables here (so they are available for all tabs)
+        self.eater_hotkey_var = tk.StringVar(value="]")
+        self.haste_hotkey_var = tk.StringVar(value="x")
+        self.skinner_hotkey_var = tk.StringVar(value="[")
+        self.heal_hotkey_var = tk.StringVar(value="F1")
+        self.critical_hotkey_var = tk.StringVar(value="F2")
+        self.mana_hotkey_var = tk.StringVar(value="F4")
         
         # Main Frame with border
         main_frame = tk.Frame(
@@ -351,6 +367,10 @@ class TibiaStyleOverlay:
         self.haste_enabled = tk.BooleanVar(value=False)
         self._create_simple_toggle(frame, "Auto Haste", self.haste_enabled, self._on_haste_toggle, self.THEME["extra"], self.haste_hotkey_var)
         
+        # Auto Skinner toggle
+        self.skinner_enabled = tk.BooleanVar(value=False)
+        self._create_simple_toggle(frame, "Auto Skinner", self.skinner_enabled, self._on_skinner_toggle, self.THEME["accent"], self.skinner_hotkey_var)
+        
         self._add_separator(frame)
         
         # Start/Stop button
@@ -398,9 +418,14 @@ class TibiaStyleOverlay:
         cb.pack(side="left")
         
         if hotkey_var:
-            tk.Label(row, text="[", fg=self.THEME["text_dim"], bg=self.THEME["bg"]).pack(side="left", padx=(5,0))
-            tk.Label(row, textvariable=hotkey_var, font=("Courier", 10, "bold"), fg=self.THEME["text_bright"], bg=self.THEME["bg"]).pack(side="left")
-            tk.Label(row, text="]", fg=self.THEME["text_dim"], bg=self.THEME["bg"]).pack(side="left")
+            def update_label(*args):
+                cb.config(text=f"{label} ({hotkey_var.get()})")
+            
+            # Initial set
+            update_label()
+            
+            # Update on change
+            hotkey_var.trace_add("write", update_label)
     
     def _create_heal_row(self, parent, label, enabled_var, threshold_var, toggle_cmd, threshold_cmd, color):
         """Create a heal toggle row."""
@@ -503,7 +528,6 @@ class TibiaStyleOverlay:
         om.pack(side="left", padx=5)
         
         # Eater Hotkey
-        self.eater_hotkey_var = tk.StringVar(value="]")
         self._create_hotkey_row(frame, "Food Key:", self.eater_hotkey_var, "eater")
 
         self._add_separator(frame)
@@ -518,8 +542,10 @@ class TibiaStyleOverlay:
         ).pack(pady=(5, 8))
         
         # Haste Hotkey
-        self.haste_hotkey_var = tk.StringVar(value="x")
         self._create_hotkey_row(frame, "Haste Key:", self.haste_hotkey_var, "haste")
+        
+        # Skinner Hotkey
+        self._create_hotkey_row(frame, "Skin Key:", self.skinner_hotkey_var, "skinner")
         
         self._add_separator(frame)
         
@@ -531,11 +557,6 @@ class TibiaStyleOverlay:
             fg=self.THEME["accent"],
             bg=self.THEME["bg"]
         ).pack(pady=(5, 8))
-        
-        # Hotkey variables
-        self.heal_hotkey_var = tk.StringVar(value="F1")
-        self.critical_hotkey_var = tk.StringVar(value="F2")
-        self.mana_hotkey_var = tk.StringVar(value="F4")
         
         # Heal hotkey
         self._create_hotkey_row(frame, "Heal:", self.heal_hotkey_var, "heal")
@@ -613,12 +634,26 @@ class TibiaStyleOverlay:
                 self.on_eater_hotkey_change(key)
             elif hotkey_type == "haste" and self.on_haste_hotkey_change:
                 self.on_haste_hotkey_change(key)
+            elif hotkey_type == "skinner" and self.on_skinner_hotkey_change:
+                self.on_skinner_hotkey_change(key)
             
             print(f"🔑 {hotkey_type} hotkey set to: {key}")
         
         # Bind key press
         self.root.bind("<Key>", on_key)
         self.root.focus_force() # Added this line as it was in the original _capture_hotkey
+    
+    def _add_separator(self, parent):
+        """Add a thin separator line."""
+        sep = tk.Frame(parent, height=1, bg=self.THEME["border_dark"])
+        sep.pack(fill="x", pady=8)
+    
+    # Event handlers
+    # ... (other handlers)
+    
+    def _on_skinner_toggle(self):
+        if self.on_skinner_toggle:
+            self.on_skinner_toggle(self.skinner_enabled.get())
     
     def _add_separator(self, parent):
         """Add a thin separator line."""
