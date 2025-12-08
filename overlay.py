@@ -1,192 +1,153 @@
 """
-Windify Bot - Overlay UI
-Tibia-style dark overlay with status, HP/Mana, and heal controls.
+Windify Helper - Tibia-Style Overlay UI
+Pixel art styled overlay with Status and Config tabs.
 """
 
 import tkinter as tk
 from tkinter import font as tkfont
-import threading
+from typing import Callable, Optional
+from region_selector import RegionSelector, Region
 
 
-class BotOverlay:
-    """Tibia-style overlay window."""
+class TibiaStyleOverlay:
+    """Tibia pixel art styled overlay with tabbed interface."""
     
-    # Tibia color theme
-    BG_COLOR = "#1a1a1a"
-    BORDER_COLOR = "#3d3d3d"
-    TEXT_COLOR = "#c0c0c0"
-    HP_COLOR = "#d44"
-    MANA_COLOR = "#48f"
-    ACCENT_COLOR = "#b8860b"
-    SUCCESS_COLOR = "#4a4"
+    # Tibia Pixel Art Theme
+    THEME = {
+        # Base colors
+        "bg": "#2d2d2d",
+        "bg_dark": "#1a1a1a",
+        "bg_light": "#3a3a3a",
+        
+        # 3D Bevel borders
+        "border_light": "#4a4a4a",
+        "border_dark": "#151515",
+        
+        # Text colors
+        "text": "#c0c0c0",
+        "text_dim": "#808080",
+        "text_bright": "#ffffff",
+        
+        # Status colors
+        "hp": "#c54444",
+        "hp_bg": "#3a2020",
+        "mana": "#4488ff",
+        "mana_bg": "#202838",
+        
+        # Accent
+        "accent": "#b8860b",
+        "accent_bright": "#daa520",
+        "success": "#4a9944",
+        "error": "#c54444",
+        
+        # Tab colors
+        "tab_active": "#3a3a3a",
+        "tab_inactive": "#252525",
+    }
     
-    def __init__(self, on_start=None, on_stop=None):
-        self.on_start = on_start
-        self.on_stop = on_stop
+    def __init__(self):
+        self.root: Optional[tk.Tk] = None
         self.running = False
         self.bot_active = False
         
-        # Callbacks for healer
-        self.on_heal_toggle = None
-        self.on_critical_toggle = None
-        self.on_mana_toggle = None
-        self.on_heal_threshold_change = None
-        self.on_critical_threshold_change = None
-        self.on_mana_threshold_change = None
-        self.on_max_hp_change = None
-        self.on_max_mana_change = None
+        # Callbacks
+        self.on_start: Optional[Callable] = None
+        self.on_stop: Optional[Callable] = None
+        self.on_hp_region_select: Optional[Callable] = None
+        self.on_mana_region_select: Optional[Callable] = None
+        self.on_reset_config: Optional[Callable] = None
         
-        self.root = None
-        self.hp_var = None
-        self.mana_var = None
-        self.status_var = None
-        self.btn_text = None
-        self.max_hp_var = None
-        self.max_mana_var = None
+        # Healer callbacks
+        self.on_heal_toggle: Optional[Callable[[bool], None]] = None
+        self.on_critical_toggle: Optional[Callable[[bool], None]] = None
+        self.on_mana_toggle: Optional[Callable[[bool], None]] = None
+        self.on_heal_threshold_change: Optional[Callable[[int], None]] = None
+        self.on_critical_threshold_change: Optional[Callable[[int], None]] = None
+        self.on_mana_threshold_change: Optional[Callable[[int], None]] = None
+        
+        # Hotkey change callbacks
+        self.on_heal_hotkey_change: Optional[Callable[[str], None]] = None
+        self.on_critical_hotkey_change: Optional[Callable[[str], None]] = None
+        self.on_mana_hotkey_change: Optional[Callable[[str], None]] = None
+        
+        # UI variables
+        self.status_var: Optional[tk.StringVar] = None
+        self.hp_var: Optional[tk.StringVar] = None
+        self.mana_var: Optional[tk.StringVar] = None
+        self.hp_region_status: Optional[tk.StringVar] = None
+        self.mana_region_status: Optional[tk.StringVar] = None
+        
+        # Tab state
+        self.current_tab = "status"
+        self.tab_frames = {}
+        self.tab_buttons = {}
+        
+        # Healer vars
         self.heal_enabled = None
         self.critical_enabled = None
         self.mana_enabled = None
         self.heal_threshold_var = None
         self.critical_threshold_var = None
         self.mana_threshold_var = None
-        self.entries = []  # Track inputs to disable/enable
+        
+        # Region selector
+        self.region_selector = RegionSelector()
+        
+        # Config state
+        self.hp_region_configured = False
+        self.mana_region_configured = False
+        
+        # Start button reference
+        self.start_btn: Optional[tk.Button] = None
+        self.entries = []
+        
+        # Error label
+        self.error_var = None
+        self.error_label = None
+        
+        # Hotkey vars
+        self.heal_hotkey_var = None
+        self.critical_hotkey_var = None
+        self.mana_hotkey_var = None
+        
+        # Key capture state
+        self._capturing_hotkey = False
+        self._capture_callback = None
     
     def create_window(self):
-        """Create the overlay window."""
+        """Create the main overlay window."""
         self.root = tk.Tk()
-        self.root.title("Windify Bot")
-        self.root.configure(bg=self.BG_COLOR)
+        self.root.title("⚔ Windify")
+        self.root.configure(bg=self.THEME["border_light"])
         self.root.attributes("-topmost", True)
         self.root.resizable(False, False)
         
-        # Main frame
-        main_frame = tk.Frame(
-            self.root, 
-            bg=self.BG_COLOR, 
-            highlightbackground=self.BORDER_COLOR,
-            highlightthickness=2,
-            padx=15, 
-            pady=10
-        )
-        main_frame.pack(fill="both", expand=True)
+        # Main frame with border effect
+        outer_frame = tk.Frame(self.root, bg=self.THEME["border_light"])
+        outer_frame.pack(fill="both", expand=True, padx=2, pady=2)
         
-        # Title
-        title_font = tkfont.Font(family="Helvetica", size=14, weight="bold")
-        tk.Label(
-            main_frame, text="🌀 Windify Bot",
-            font=title_font, fg=self.ACCENT_COLOR, bg=self.BG_COLOR
-        ).pack(pady=(0, 10))
+        inner_frame = tk.Frame(outer_frame, bg=self.THEME["border_dark"])
+        inner_frame.pack(fill="both", expand=True, padx=1, pady=1)
         
-        # Status
-        self.status_var = tk.StringVar(value="⏸️ Stopped")
-        status_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
-        status_frame.pack(fill="x", pady=5)
-        tk.Label(status_frame, text="Status:", fg=self.TEXT_COLOR, bg=self.BG_COLOR, width=8, anchor="w").pack(side="left")
-        tk.Label(status_frame, textvariable=self.status_var, fg=self.TEXT_COLOR, bg=self.BG_COLOR).pack(side="left")
+        main = tk.Frame(inner_frame, bg=self.THEME["bg"], padx=10, pady=8)
+        main.pack(fill="both", expand=True, padx=1, pady=1)
         
-        self._add_separator(main_frame)
+        # Header
+        self._create_header(main)
         
-        # HP display
-        self.hp_var = tk.StringVar(value="---")
-        hp_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
-        hp_frame.pack(fill="x", pady=3)
-        tk.Label(hp_frame, text="❤️ HP:", fg=self.HP_COLOR, bg=self.BG_COLOR, width=8, anchor="w", font=("Helvetica", 12)).pack(side="left")
-        tk.Label(hp_frame, textvariable=self.hp_var, fg=self.HP_COLOR, bg=self.BG_COLOR, font=("Helvetica", 12, "bold"), width=8, anchor="e").pack(side="right")
+        # Tabs
+        self._create_tabs(main)
         
-        # Max HP input
-        max_hp_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
-        max_hp_frame.pack(fill="x", pady=2)
-        tk.Label(max_hp_frame, text="Max HP:", fg=self.TEXT_COLOR, bg=self.BG_COLOR, width=8, anchor="w").pack(side="left")
-        self.max_hp_var = tk.StringVar(value="---")
-        max_hp_entry = tk.Entry(max_hp_frame, textvariable=self.max_hp_var, width=8, bg="#2a2a2a", fg=self.TEXT_COLOR, insertbackground=self.TEXT_COLOR)
-        max_hp_entry.pack(side="right")
-        max_hp_entry.bind("<Return>", self._on_max_hp_change)
-        self.entries.append(max_hp_entry)
+        # Tab content area
+        self.content_frame = tk.Frame(main, bg=self.THEME["bg"])
+        self.content_frame.pack(fill="both", expand=True)
         
-        # Mana display
-        self.mana_var = tk.StringVar(value="---")
-        mana_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
-        mana_frame.pack(fill="x", pady=3)
-        tk.Label(mana_frame, text="🔷 Mana:", fg=self.MANA_COLOR, bg=self.BG_COLOR, width=8, anchor="w", font=("Helvetica", 12)).pack(side="left")
-        tk.Label(mana_frame, textvariable=self.mana_var, fg=self.MANA_COLOR, bg=self.BG_COLOR, font=("Helvetica", 12, "bold"), width=8, anchor="e").pack(side="right")
+        # Create tab contents
+        self._create_status_tab()
+        self._create_config_tab()
         
-        self._add_separator(main_frame)
-        
-        # Heal section
-        tk.Label(main_frame, text="Auto Heal", fg=self.ACCENT_COLOR, bg=self.BG_COLOR, font=("Helvetica", 11, "bold")).pack(pady=(5, 3))
-        
-        # Normal Heal toggle
-        self.heal_enabled = tk.BooleanVar(value=True)
-        self.heal_threshold_var = tk.StringVar(value="75")
-        heal_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
-        heal_frame.pack(fill="x", pady=2)
-        tk.Checkbutton(
-            heal_frame, text="Heal (F1)", variable=self.heal_enabled,
-            command=self._on_heal_toggle, bg=self.BG_COLOR, fg=self.TEXT_COLOR,
-            selectcolor="#2a2a2a", activebackground=self.BG_COLOR
-        ).pack(side="left")
-        tk.Label(heal_frame, text="@", fg=self.TEXT_COLOR, bg=self.BG_COLOR).pack(side="left", padx=5)
-        heal_entry = tk.Entry(heal_frame, textvariable=self.heal_threshold_var, width=4, bg="#2a2a2a", fg=self.TEXT_COLOR, insertbackground=self.TEXT_COLOR)
-        heal_entry.pack(side="left")
-        heal_entry.bind("<Return>", self._on_heal_threshold_change)
-        self.entries.append(heal_entry)
-        tk.Label(heal_frame, text="%", fg=self.TEXT_COLOR, bg=self.BG_COLOR).pack(side="left")
-        
-        # Critical Heal toggle
-        self.critical_enabled = tk.BooleanVar(value=True)
-        self.critical_threshold_var = tk.StringVar(value="50")
-        crit_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
-        crit_frame.pack(fill="x", pady=2)
-        tk.Checkbutton(
-            crit_frame, text="Critical (F2)", variable=self.critical_enabled,
-            command=self._on_critical_toggle, bg=self.BG_COLOR, fg=self.HP_COLOR,
-            selectcolor="#2a2a2a", activebackground=self.BG_COLOR
-        ).pack(side="left")
-        tk.Label(crit_frame, text="@", fg=self.TEXT_COLOR, bg=self.BG_COLOR).pack(side="left", padx=5)
-        crit_entry = tk.Entry(crit_frame, textvariable=self.critical_threshold_var, width=4, bg="#2a2a2a", fg=self.TEXT_COLOR, insertbackground=self.TEXT_COLOR)
-        crit_entry.pack(side="left")
-        crit_entry.bind("<Return>", self._on_critical_threshold_change)
-        self.entries.append(crit_entry)
-        tk.Label(crit_frame, text="%", fg=self.TEXT_COLOR, bg=self.BG_COLOR).pack(side="left")
-        
-        # Mana Restore toggle
-        self.mana_enabled = tk.BooleanVar(value=True)
-        self.mana_threshold_var = tk.StringVar(value="60")
-        mana_restore_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
-        mana_restore_frame.pack(fill="x", pady=2)
-        tk.Checkbutton(
-            mana_restore_frame, text="Mana (F4)", variable=self.mana_enabled,
-            command=self._on_mana_toggle, bg=self.BG_COLOR, fg=self.MANA_COLOR,
-            selectcolor="#2a2a2a", activebackground=self.BG_COLOR
-        ).pack(side="left")
-        tk.Label(mana_restore_frame, text="@", fg=self.TEXT_COLOR, bg=self.BG_COLOR).pack(side="left", padx=5)
-        mana_entry = tk.Entry(mana_restore_frame, textvariable=self.mana_threshold_var, width=4, bg="#2a2a2a", fg=self.TEXT_COLOR, insertbackground=self.TEXT_COLOR)
-        mana_entry.pack(side="left")
-        mana_entry.bind("<Return>", self._on_mana_threshold_change)
-        self.entries.append(mana_entry)
-        tk.Label(mana_restore_frame, text="%", fg=self.TEXT_COLOR, bg=self.BG_COLOR).pack(side="left")
-        
-        # Max Mana input
-        max_mana_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
-        max_mana_frame.pack(fill="x", pady=2)
-        tk.Label(max_mana_frame, text="Max Mana:", fg=self.TEXT_COLOR, bg=self.BG_COLOR, width=10, anchor="w").pack(side="left")
-        self.max_mana_var = tk.StringVar(value="---")
-        max_mana_entry = tk.Entry(max_mana_frame, textvariable=self.max_mana_var, width=8, bg="#2a2a2a", fg=self.TEXT_COLOR, insertbackground=self.TEXT_COLOR)
-        max_mana_entry.pack(side="right")
-        max_mana_entry.bind("<Return>", self._on_max_mana_change)
-        self.entries.append(max_mana_entry)
-        
-        self._add_separator(main_frame)
-        
-        # Start/Stop button
-        self.btn_text = tk.StringVar(value="▶️ Start")
-        self.toggle_btn = tk.Button(
-            main_frame, textvariable=self.btn_text, command=self._toggle_bot,
-            bg="#2a2a2a", fg=self.ACCENT_COLOR, activebackground="#3a3a3a",
-            activeforeground=self.ACCENT_COLOR, relief="flat", width=15,
-            font=("Helvetica", 11, "bold"), cursor="hand2"
-        )
-        self.toggle_btn.pack(pady=5)
+        # Show initial tab
+        self._show_tab("status")
         
         # Position window
         self.root.update_idletasks()
@@ -196,32 +157,502 @@ class BotOverlay:
         
         self.running = True
     
-    def _add_separator(self, parent):
-        tk.Frame(parent, height=1, bg=self.BORDER_COLOR).pack(fill="x", pady=8)
+    def _create_header(self, parent):
+        """Create header with title."""
+        header = tk.Frame(parent, bg=self.THEME["bg"])
+        header.pack(fill="x", pady=(0, 8))
+        
+        # Title with pixel-style appearance
+        title = tk.Label(
+            header,
+            text="⚔ Windify Helper",
+            font=("Courier", 14, "bold"),
+            fg=self.THEME["accent_bright"],
+            bg=self.THEME["bg"]
+        )
+        title.pack()
     
+    def _create_tabs(self, parent):
+        """Create tab buttons."""
+        tab_frame = tk.Frame(parent, bg=self.THEME["bg"])
+        tab_frame.pack(fill="x", pady=(0, 8))
+        
+        tabs = [
+            ("status", "📊 Status"),
+            ("config", "⚙ Config"),
+        ]
+        
+        for tab_id, label in tabs:
+            btn = tk.Button(
+                tab_frame,
+                text=label,
+                font=("Courier", 10),
+                fg=self.THEME["text"],
+                bg=self.THEME["tab_inactive"],
+                activebackground=self.THEME["tab_active"],
+                activeforeground=self.THEME["text_bright"],
+                relief="flat",
+                bd=0,
+                padx=15,
+                pady=5,
+                cursor="hand2",
+                command=lambda t=tab_id: self._show_tab(t)
+            )
+            btn.pack(side="left", padx=2)
+            self.tab_buttons[tab_id] = btn
+    
+    def _show_tab(self, tab_id: str):
+        """Switch to specified tab."""
+        self.current_tab = tab_id
+        
+        # Update button styles
+        for tid, btn in self.tab_buttons.items():
+            if tid == tab_id:
+                btn.configure(bg=self.THEME["tab_active"], fg=self.THEME["text_bright"])
+            else:
+                btn.configure(bg=self.THEME["tab_inactive"], fg=self.THEME["text"])
+        
+        # Show/hide frames
+        for tid, frame in self.tab_frames.items():
+            if tid == tab_id:
+                frame.pack(fill="both", expand=True)
+            else:
+                frame.pack_forget()
+    
+    def _create_status_tab(self):
+        """Create Status tab content."""
+        frame = tk.Frame(self.content_frame, bg=self.THEME["bg"])
+        self.tab_frames["status"] = frame
+        
+        # Status line
+        self.status_var = tk.StringVar(value="⏸️ Stopped")
+        status_frame = tk.Frame(frame, bg=self.THEME["bg"])
+        status_frame.pack(fill="x", pady=2)
+        tk.Label(status_frame, text="Status:", font=("Courier", 10), fg=self.THEME["text_dim"], bg=self.THEME["bg"], width=10, anchor="w").pack(side="left")
+        tk.Label(status_frame, textvariable=self.status_var, font=("Courier", 10), fg=self.THEME["text"], bg=self.THEME["bg"]).pack(side="left")
+        
+        self._add_separator(frame)
+        
+        # HP Display
+        self.hp_var = tk.StringVar(value="---/---")
+        hp_frame = tk.Frame(frame, bg=self.THEME["bg"])
+        hp_frame.pack(fill="x", pady=2)
+        
+        tk.Label(
+            hp_frame,
+            text="❤️ HP:",
+            font=("Courier", 11, "bold"),
+            fg=self.THEME["hp"],
+            bg=self.THEME["bg"],
+            width=10,
+            anchor="w"
+        ).pack(side="left")
+        
+        tk.Label(
+            hp_frame,
+            textvariable=self.hp_var,
+            font=("Courier", 11, "bold"),
+            fg=self.THEME["hp"],
+            bg=self.THEME["bg"]
+        ).pack(side="right")
+        
+        # Mana Display
+        self.mana_var = tk.StringVar(value="---/---")
+        mana_frame = tk.Frame(frame, bg=self.THEME["bg"])
+        mana_frame.pack(fill="x", pady=2)
+        
+        tk.Label(
+            mana_frame,
+            text="🔷 Mana:",
+            font=("Courier", 11, "bold"),
+            fg=self.THEME["mana"],
+            bg=self.THEME["bg"],
+            width=10,
+            anchor="w"
+        ).pack(side="left")
+        
+        tk.Label(
+            mana_frame,
+            textvariable=self.mana_var,
+            font=("Courier", 11, "bold"),
+            fg=self.THEME["mana"],
+            bg=self.THEME["bg"]
+        ).pack(side="right")
+        
+        self._add_separator(frame)
+        
+        # Auto Heal Section
+        tk.Label(
+            frame,
+            text="Auto Heal",
+            font=("Courier", 10, "bold"),
+            fg=self.THEME["accent"],
+            bg=self.THEME["bg"]
+        ).pack(pady=(5, 3))
+        
+        # Heal toggle
+        self.heal_enabled = tk.BooleanVar(value=True)
+        self.heal_threshold_var = tk.StringVar(value="75")
+        self._create_heal_row(frame, "Heal (F1)", self.heal_enabled, self.heal_threshold_var, 
+                              self._on_heal_toggle, self._on_heal_threshold_change, self.THEME["text"])
+        
+        # Critical toggle
+        self.critical_enabled = tk.BooleanVar(value=True)
+        self.critical_threshold_var = tk.StringVar(value="50")
+        self._create_heal_row(frame, "Critical (F2)", self.critical_enabled, self.critical_threshold_var,
+                              self._on_critical_toggle, self._on_critical_threshold_change, self.THEME["hp"])
+        
+        # Mana toggle
+        self.mana_enabled = tk.BooleanVar(value=True)
+        self.mana_threshold_var = tk.StringVar(value="60")
+        self._create_heal_row(frame, "Mana (F4)", self.mana_enabled, self.mana_threshold_var,
+                              self._on_mana_toggle, self._on_mana_threshold_change, self.THEME["mana"])
+        
+        self._add_separator(frame)
+        
+        # Start/Stop button
+        self.start_btn = tk.Button(
+            frame,
+            text="▶️ Start",
+            font=("Courier", 11, "bold"),
+            fg=self.THEME["accent_bright"],
+            bg=self.THEME["bg_light"],
+            activebackground=self.THEME["bg"],
+            activeforeground=self.THEME["accent_bright"],
+            relief="flat",
+            cursor="hand2",
+            width=18,
+            command=self._toggle_bot
+        )
+        self.start_btn.pack(pady=8)
+        
+        # Error message label (hidden by default)
+        self.error_var = tk.StringVar(value="")
+        self.error_label = tk.Label(
+            frame,
+            textvariable=self.error_var,
+            font=("Courier", 9),
+            fg=self.THEME["error"],
+            bg=self.THEME["bg"]
+        )
+    
+    def _create_heal_row(self, parent, label, enabled_var, threshold_var, toggle_cmd, threshold_cmd, color):
+        """Create a heal toggle row."""
+        row = tk.Frame(parent, bg=self.THEME["bg"])
+        row.pack(fill="x", pady=2)
+        
+        cb = tk.Checkbutton(
+            row,
+            text=label,
+            variable=enabled_var,
+            command=toggle_cmd,
+            font=("Courier", 10),
+            fg=color,
+            bg=self.THEME["bg"],
+            selectcolor=self.THEME["bg_dark"],
+            activebackground=self.THEME["bg"]
+        )
+        cb.pack(side="left")
+        
+        tk.Label(row, text="@", fg=self.THEME["text_dim"], bg=self.THEME["bg"]).pack(side="left", padx=3)
+        
+        entry = tk.Entry(
+            row,
+            textvariable=threshold_var,
+            width=4,
+            font=("Courier", 10),
+            fg=self.THEME["text"],
+            bg=self.THEME["bg_dark"],
+            insertbackground=self.THEME["text"],
+            relief="flat"
+        )
+        entry.pack(side="left")
+        entry.bind("<Return>", threshold_cmd)
+        self.entries.append(entry)
+        
+        tk.Label(row, text="%", fg=self.THEME["text_dim"], bg=self.THEME["bg"]).pack(side="left")
+    
+    def _create_config_tab(self):
+        """Create Config tab content."""
+        frame = tk.Frame(self.content_frame, bg=self.THEME["bg"])
+        self.tab_frames["config"] = frame
+        
+        # Title
+        tk.Label(
+            frame,
+            text="Region Configuration",
+            font=("Courier", 10, "bold"),
+            fg=self.THEME["accent"],
+            bg=self.THEME["bg"]
+        ).pack(pady=(5, 10))
+        
+        # HP Region
+        hp_box = tk.Frame(frame, bg=self.THEME["bg"])
+        hp_box.pack(fill="x", pady=5)
+        
+        hp_row = tk.Frame(hp_box, bg=self.THEME["bg"])
+        hp_row.pack(fill="x")
+        tk.Label(hp_row, text="HP Region:", font=("Courier", 10), fg=self.THEME["text"], bg=self.THEME["bg"], width=12, anchor="w").pack(side="left", padx=5)
+        tk.Button(hp_row, text="📍 Select", font=("Courier", 9), fg=self.THEME["text_bright"], bg=self.THEME["bg_light"], relief="flat", cursor="hand2", command=self._select_hp_region).pack(side="right", padx=5)
+        
+        self.hp_region_status = tk.StringVar(value="✗ Not configured")
+        tk.Label(hp_box, textvariable=self.hp_region_status, font=("Courier", 9), fg=self.THEME["text_dim"], bg=self.THEME["bg"]).pack(anchor="w", padx=10)
+        
+        # Mana Region
+        mana_box = tk.Frame(frame, bg=self.THEME["bg"])
+        mana_box.pack(fill="x", pady=5)
+        
+        mana_row = tk.Frame(mana_box, bg=self.THEME["bg"])
+        mana_row.pack(fill="x")
+        tk.Label(mana_row, text="Mana Region:", font=("Courier", 10), fg=self.THEME["text"], bg=self.THEME["bg"], width=12, anchor="w").pack(side="left", padx=5)
+        tk.Button(mana_row, text="📍 Select", font=("Courier", 9), fg=self.THEME["text_bright"], bg=self.THEME["bg_light"], relief="flat", cursor="hand2", command=self._select_mana_region).pack(side="right", padx=5)
+        
+        self.mana_region_status = tk.StringVar(value="✗ Not configured")
+        tk.Label(mana_box, textvariable=self.mana_region_status, font=("Courier", 9), fg=self.THEME["text_dim"], bg=self.THEME["bg"]).pack(anchor="w", padx=10)
+        
+        self._add_separator(frame)
+        
+        # Hotkeys Section
+        tk.Label(
+            frame,
+            text="Hotkey Configuration",
+            font=("Courier", 10, "bold"),
+            fg=self.THEME["accent"],
+            bg=self.THEME["bg"]
+        ).pack(pady=(5, 8))
+        
+        # Hotkey variables
+        self.heal_hotkey_var = tk.StringVar(value="F1")
+        self.critical_hotkey_var = tk.StringVar(value="F2")
+        self.mana_hotkey_var = tk.StringVar(value="F4")
+        
+        # Heal hotkey
+        self._create_hotkey_row(frame, "Heal:", self.heal_hotkey_var, "heal")
+        
+        # Critical heal hotkey
+        self._create_hotkey_row(frame, "Critical:", self.critical_hotkey_var, "critical")
+        
+        # Mana hotkey
+        self._create_hotkey_row(frame, "Mana:", self.mana_hotkey_var, "mana")
+        
+        self._add_separator(frame)
+        
+        # Reset button
+        tk.Button(
+            frame,
+            text="🔄 Reset All",
+            font=("Courier", 10),
+            fg=self.THEME["error"],
+            bg=self.THEME["bg_light"],
+            activebackground=self.THEME["bg_dark"],
+            relief="flat",
+            cursor="hand2",
+            command=self._reset_config
+        ).pack(pady=8)
+    
+    def _create_hotkey_row(self, parent, label: str, var: tk.StringVar, hotkey_type: str):
+        """Create a hotkey configuration row."""
+        row = tk.Frame(parent, bg=self.THEME["bg"])
+        row.pack(fill="x", pady=2, padx=5)
+        
+        tk.Label(
+            row,
+            text=label,
+            font=("Courier", 10),
+            fg=self.THEME["text"],
+            bg=self.THEME["bg"],
+            width=10,
+            anchor="w"
+        ).pack(side="left")
+        
+        # Current hotkey display
+        hotkey_label = tk.Label(
+            row,
+            textvariable=var,
+            font=("Courier", 10, "bold"),
+            fg=self.THEME["accent_bright"],
+            bg=self.THEME["bg_dark"],
+            width=6,
+            relief="flat"
+        )
+        hotkey_label.pack(side="left", padx=5)
+        
+        # Set button
+        set_btn = tk.Button(
+            row,
+            text="⌨ Set",
+            font=("Courier", 9),
+            fg=self.THEME["text_bright"],
+            bg=self.THEME["bg_light"],
+            relief="flat",
+            cursor="hand2",
+            command=lambda: self._capture_hotkey(var, hotkey_type, set_btn)
+        )
+        set_btn.pack(side="right")
+    
+    def _capture_hotkey(self, var: tk.StringVar, hotkey_type: str, button: tk.Button):
+        """Capture next key press and set as hotkey."""
+        # Change button to show we're waiting
+        original_text = button.cget("text")
+        button.configure(text="Press key...", bg=self.THEME["accent"])
+        
+        def on_key(event):
+            # Get key name
+            key = event.keysym
+            
+            # Convert to uppercase for F-keys, keep as-is for others
+            if key.startswith("F") and key[1:].isdigit():
+                key = key.upper()
+            elif len(key) == 1:
+                key = key.upper()
+            
+            # Update variable
+            var.set(key)
+            
+            # Restore button
+            button.configure(text=original_text, bg=self.THEME["bg_light"])
+            
+            # Unbind
+            self.root.unbind("<Key>")
+            
+            # Call appropriate callback
+            if hotkey_type == "heal" and self.on_heal_hotkey_change:
+                self.on_heal_hotkey_change(key)
+            elif hotkey_type == "critical" and self.on_critical_hotkey_change:
+                self.on_critical_hotkey_change(key)
+            elif hotkey_type == "mana" and self.on_mana_hotkey_change:
+                self.on_mana_hotkey_change(key)
+            
+            print(f"🔑 {hotkey_type} hotkey set to: {key}")
+        
+        # Bind key press
+        self.root.bind("<Key>", on_key)
+        self.root.focus_force()
+    
+    def _add_separator(self, parent):
+        """Add a thin separator line."""
+        sep = tk.Frame(parent, height=1, bg=self.THEME["border_dark"])
+        sep.pack(fill="x", pady=8)
+    
+    # Event handlers
     def _toggle_bot(self):
+        """Toggle bot start/stop."""
         if self.bot_active:
             self.bot_active = False
-            self.btn_text.set("▶️ Start")
-            self.set_status("⏸️ Stopped")
+            self.start_btn.configure(text="▶️ Start")
+            self.error_var.set("")
+            self.error_label.pack_forget()
             
             # Enable inputs
             for entry in self.entries:
-                entry.configure(state="normal", bg="#2a2a2a")
+                entry.configure(state="normal")
             
             if self.on_stop:
                 self.on_stop()
         else:
+            # Check if configured
+            if not self.hp_region_configured or not self.mana_region_configured:
+                self.error_var.set("⚠️ Configure HP/Mana regions first!")
+                self.error_label.pack(pady=3)
+                return
+            
             self.bot_active = True
-            self.btn_text.set("⏹️ Stop")
-            self.set_status("🔍 Searching...")
+            self.start_btn.configure(text="⏹️ Stop")
+            self.error_var.set("")
+            self.error_label.pack_forget()
             
             # Disable inputs
             for entry in self.entries:
-                entry.configure(state="disabled", bg="#1a1a1a")
+                entry.configure(state="disabled")
             
             if self.on_start:
                 self.on_start()
+    
+    def _select_hp_region(self):
+        """Open region selector for HP."""
+        self.root.withdraw()  # Hide main window
+        
+        def on_selected(region: Optional[Region]):
+            self.root.deiconify()  # Show main window
+            if region:
+                self.hp_region_configured = True
+                # Test OCR and show result
+                result = self._test_region_ocr(region.as_tuple())
+                if result:
+                    self.hp_region_status.set(f"✓ Detected: {result[0]}/{result[1]}")
+                else:
+                    self.hp_region_status.set(f"✓ Region set (x:{region.x}, y:{region.y})")
+                if self.on_hp_region_select:
+                    self.on_hp_region_select(region.as_tuple())
+        
+        self.region_selector.select_region(self.root, on_selected, "Select HP Region")
+    
+    def _select_mana_region(self):
+        """Open region selector for Mana."""
+        self.root.withdraw()  # Hide main window
+        
+        def on_selected(region: Optional[Region]):
+            self.root.deiconify()  # Show main window
+            if region:
+                self.mana_region_configured = True
+                # Test OCR and show result
+                result = self._test_region_ocr(region.as_tuple())
+                if result:
+                    self.mana_region_status.set(f"✓ Detected: {result[0]}/{result[1]}")
+                else:
+                    self.mana_region_status.set(f"✓ Region set (x:{region.x}, y:{region.y})")
+                if self.on_mana_region_select:
+                    self.on_mana_region_select(region.as_tuple())
+        
+        self.region_selector.select_region(self.root, on_selected, "Select Mana Region")
+    
+    def _test_region_ocr(self, region: tuple) -> Optional[tuple]:
+        """Test OCR on a region and return (current, max) or None."""
+        try:
+            import mss
+            import cv2
+            import numpy as np
+            from PIL import Image
+            import pytesseract
+            import re
+            
+            x, y, w, h = region
+            
+            with mss.mss() as sct:
+                monitor = {"left": x, "top": y, "width": w, "height": h}
+                screenshot = sct.grab(monitor)
+                img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
+            
+            arr = np.array(img.convert('L'))
+            
+            for thresh in [80, 100, 120, 140]:
+                _, binary = cv2.threshold(arr, thresh, 255, cv2.THRESH_BINARY)
+                scaled = cv2.resize(binary, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+                padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
+                
+                text = pytesseract.image_to_string(
+                    padded,
+                    config='--psm 7 -c tessedit_char_whitelist=0123456789/'
+                ).strip()
+                
+                match = re.match(r'(\d+)[/|](\d+)', text.replace(" ", ""))
+                if match:
+                    return (int(match.group(1)), int(match.group(2)))
+            
+            return None
+        except Exception as e:
+            print(f"OCR test error: {e}")
+            return None
+    
+    def _reset_config(self):
+        """Reset all region configuration."""
+        self.hp_region_configured = False
+        self.mana_region_configured = False
+        self.hp_region_status.set("✗ Not configured")
+        self.mana_region_status.set("✗ Not configured")
+        
+        if self.on_reset_config:
+            self.on_reset_config()
     
     def _on_heal_toggle(self):
         if self.on_heal_toggle:
@@ -251,14 +682,6 @@ class BotOverlay:
         except ValueError:
             pass
     
-    def _on_max_hp_change(self, event=None):
-        try:
-            val = int(self.max_hp_var.get())
-            if self.on_max_hp_change:
-                self.on_max_hp_change(val)
-        except ValueError:
-            pass
-    
     def _on_mana_threshold_change(self, event=None):
         try:
             val = int(self.mana_threshold_var.get())
@@ -267,33 +690,66 @@ class BotOverlay:
         except ValueError:
             pass
     
-    def _on_max_mana_change(self, event=None):
-        try:
-            val = int(self.max_mana_var.get())
-            if self.on_max_mana_change:
-                self.on_max_mana_change(val)
-        except ValueError:
-            pass
-    
+    # Public API
     def set_status(self, status: str):
         if self.status_var:
             self.status_var.set(status)
     
-    def set_hp(self, value: int):
+    def set_hp(self, current: Optional[int], max_hp: Optional[int] = None):
         if self.hp_var:
-            self.hp_var.set(f"{value:,}" if value else "---")
+            if current is not None and max_hp:
+                pct = (current / max_hp) * 100
+                self.hp_var.set(f"{current:,}/{max_hp:,} ({pct:.0f}%)")
+            elif current is not None:
+                self.hp_var.set(f"{current:,}")
+            else:
+                self.hp_var.set("---")
     
-    def set_mana(self, value: int):
+    def set_mana(self, current: Optional[int], max_mana: Optional[int] = None):
         if self.mana_var:
-            self.mana_var.set(f"{value:,}" if value else "---")
+            if current is not None and max_mana:
+                pct = (current / max_mana) * 100
+                self.mana_var.set(f"{current:,}/{max_mana:,} ({pct:.0f}%)")
+            elif current is not None:
+                self.mana_var.set(f"{current:,}")
+            else:
+                self.mana_var.set("---")
     
-    def set_max_hp(self, value: int):
-        if self.max_hp_var and value:
-            self.max_hp_var.set(str(value))
+    def set_hp_region_status(self, configured: bool, coords: Optional[tuple] = None):
+        """Update HP region configuration status."""
+        self.hp_region_configured = configured
+        if self.hp_region_status:
+            if configured and coords:
+                x, y, w, h = coords
+                self.hp_region_status.set(f"✓ {x}, {y} ({w}x{h})")
+            else:
+                self.hp_region_status.set("✗ Not configured")
     
-    def set_max_mana(self, value: int):
-        if self.max_mana_var and value:
-            self.max_mana_var.set(str(value))
+    def set_mana_region_status(self, configured: bool, coords: Optional[tuple] = None):
+        """Update Mana region configuration status."""
+        self.mana_region_configured = configured
+        if self.mana_region_status:
+            if configured and coords:
+                x, y, w, h = coords
+                self.mana_region_status.set(f"✓ {x}, {y} ({w}x{h})")
+            else:
+                self.mana_region_status.set("✗ Not configured")
+    
+    def set_hotkeys(self, heal_key: str, critical_key: str, mana_key: str):
+        """Set initial hotkey display values."""
+        if self.heal_hotkey_var:
+            self.heal_hotkey_var.set(heal_key)
+        if self.critical_hotkey_var:
+            self.critical_hotkey_var.set(critical_key)
+        if self.mana_hotkey_var:
+            self.mana_hotkey_var.set(mana_key)
+    
+    def show_error(self, message: str):
+        """Show error message on Status tab."""
+        if self.error_var:
+            self.error_var.set(message)
+        if self.error_label:
+            self.error_label.pack(pady=3)
     
     def update(self):
         if self.root:
@@ -309,6 +765,10 @@ class BotOverlay:
             self.root.destroy()
 
 
+# Backward compatibility alias
+BotOverlay = TibiaStyleOverlay
+
+
 if __name__ == "__main__":
-    overlay = BotOverlay()
+    overlay = TibiaStyleOverlay()
     overlay.run()

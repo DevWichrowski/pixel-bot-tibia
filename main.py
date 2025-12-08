@@ -1,45 +1,127 @@
 """
-Windify Bot - Main with Overlay and Auto-Heal
+Windify Helper - Main with Overlay and Auto-Heal
+Uses user-defined regions for HP/Mana reading.
 """
 
 import time
 import threading
+import mss
+from PIL import Image
 from config import BOT_NAME, REFRESH_RATE
-from window_finder import WindowTracker
-from screen_capture import ScreenCapture
 from hp_mana_reader import HPManaReader
-from overlay import BotOverlay
+from overlay import TibiaStyleOverlay
 from healer import AutoHealer, press_key
+from user_config import ConfigManager
 
 
 class TibiaBot:
-    def __init__(self, overlay: BotOverlay):
+    def __init__(self, overlay: TibiaStyleOverlay, config_manager: ConfigManager):
         self.overlay = overlay
-        self.tracker = WindowTracker()
-        self.capture = ScreenCapture()
+        self.config_manager = config_manager
         self.reader = HPManaReader()
         self.healer = AutoHealer(press_key)
         self.running = False
         self.active = False
+        self.sct = mss.mss()  # Screen capture
+        
+        # Load saved regions
+        self._load_saved_config()
         
         # Connect overlay callbacks
         self._setup_callbacks()
     
+    def _load_saved_config(self):
+        """Load saved HP/Mana regions from config."""
+        config = self.config_manager.config
+        
+        if config.regions.hp_region:
+            self.reader.set_regions(hp_region=config.regions.hp_region)
+            self.overlay.set_hp_region_status(True, config.regions.hp_region)
+            print(f"📍 Loaded HP region: {config.regions.hp_region}")
+        
+        if config.regions.mana_region:
+            self.reader.set_regions(mana_region=config.regions.mana_region)
+            self.overlay.set_mana_region_status(True, config.regions.mana_region)
+            print(f"📍 Loaded Mana region: {config.regions.mana_region}")
+        
+        # Load healer config
+        healer_cfg = config.healer
+        self.healer.heal.enabled = healer_cfg.heal_enabled
+        self.healer.heal.threshold = healer_cfg.heal_threshold
+        self.healer.heal.hotkey = healer_cfg.heal_hotkey
+        self.healer.critical_heal.enabled = healer_cfg.critical_enabled
+        self.healer.critical_heal.threshold = healer_cfg.critical_threshold
+        self.healer.critical_heal.hotkey = healer_cfg.critical_hotkey
+        self.healer.mana_restore.enabled = healer_cfg.mana_enabled
+        self.healer.mana_restore.threshold = healer_cfg.mana_threshold
+        self.healer.mana_restore.hotkey = healer_cfg.mana_hotkey
+    
     def _setup_callbacks(self):
-        """Connect overlay controls to healer."""
+        """Connect overlay controls to bot functionality."""
+        # Healer callbacks
         self.overlay.on_heal_toggle = self.healer.toggle_heal
         self.overlay.on_critical_toggle = self.healer.toggle_critical_heal
         self.overlay.on_mana_toggle = self.healer.toggle_mana_restore
         self.overlay.on_heal_threshold_change = self.healer.set_heal_threshold
         self.overlay.on_critical_threshold_change = self.healer.set_critical_threshold
         self.overlay.on_mana_threshold_change = self.healer.set_mana_threshold
-        self.overlay.on_max_hp_change = self.healer.set_max_hp
-        self.overlay.on_max_mana_change = self.healer.set_max_mana
+        
+        # Hotkey change callbacks
+        self.overlay.on_heal_hotkey_change = self._on_heal_hotkey_change
+        self.overlay.on_critical_hotkey_change = self._on_critical_hotkey_change
+        self.overlay.on_mana_hotkey_change = self._on_mana_hotkey_change
+        
+        # Region selection callbacks
+        self.overlay.on_hp_region_select = self._on_hp_region_selected
+        self.overlay.on_mana_region_select = self._on_mana_region_selected
+        self.overlay.on_reset_config = self._on_reset_config
+    
+    def _on_hp_region_selected(self, region: tuple):
+        """Handle HP region selection."""
+        self.reader.set_regions(hp_region=region)
+        self.config_manager.set_hp_region(region)
+        print(f"📍 HP region saved: {region}")
+    
+    def _on_mana_region_selected(self, region: tuple):
+        """Handle Mana region selection."""
+        self.reader.set_regions(mana_region=region)
+        self.config_manager.set_mana_region(region)
+        print(f"📍 Mana region saved: {region}")
+    
+    def _on_reset_config(self):
+        """Handle config reset."""
+        self.config_manager.reset_regions()
+        self.reader.set_regions(hp_region=None, mana_region=None)
+        print("🔄 Regions reset")
+    
+    def _on_heal_hotkey_change(self, key: str):
+        """Handle heal hotkey change."""
+        self.healer.heal.hotkey = key
+        self.config_manager.config.healer.heal_hotkey = key
+        self.config_manager.save()
+    
+    def _on_critical_hotkey_change(self, key: str):
+        """Handle critical heal hotkey change."""
+        self.healer.critical_heal.hotkey = key
+        self.config_manager.config.healer.critical_hotkey = key
+        self.config_manager.save()
+    
+    def _on_mana_hotkey_change(self, key: str):
+        """Handle mana hotkey change."""
+        self.healer.mana_restore.hotkey = key
+        self.config_manager.config.healer.mana_hotkey = key
+        self.config_manager.save()
     
     def start(self):
         """Start the bot loop."""
+        # Verify configuration
+        if not self.reader.is_configured():
+            self.overlay.show_error("⚠️ Configure HP/Mana regions first!")
+            return False
+        
         self.active = True
         self.overlay.set_status("🔍 Searching...")
+        return True
     
     def stop(self):
         """Stop the bot loop."""
@@ -48,6 +130,12 @@ class TibiaBot:
         self.overlay.set_hp(None)
         self.overlay.set_mana(None)
     
+    def _capture_screen(self) -> Image.Image:
+        """Capture entire screen."""
+        monitor = self.sct.monitors[1]  # Primary monitor
+        screenshot = self.sct.grab(monitor)
+        return Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
+    
     def run_loop(self):
         """Main bot loop - runs in background."""
         import traceback
@@ -55,72 +143,52 @@ class TibiaBot:
         
         while self.running:
             try:
-                # Update window position first (ALWAYS runs)
-                window = self.tracker.update()
-                
-                if not window:
-                    self.overlay.set_status("⚠️ Tibia not found")
+                # Only read if regions are configured
+                if not self.reader.is_configured():
                     time.sleep(0.5)
                     continue
                 
-                if self.tracker.has_changed():
-                    self.reader.reset()
+                # Capture screen
+                img = self._capture_screen()
                 
-                img = self.capture.capture_window(window)
-                if img:
-                    status = self.reader.read_status(img)
+                # Read HP/Mana from configured regions
+                status = self.reader.read_status(img)
+                
+                # Always update display (even when not active)
+                if status.hp_current or status.mana_current:
+                    self.overlay.set_hp(status.hp_current, status.hp_max)
+                    self.overlay.set_mana(status.mana_current, status.mana_max)
                     
-                    if status.hp or status.mana:
-                        self.overlay.set_hp(status.hp)
-                        self.overlay.set_mana(status.mana)
+                    # Set max HP/Mana for healer
+                    if status.hp_max and self.healer.max_hp is None:
+                        self.healer.set_max_hp(status.hp_max)
+                    if status.mana_max and self.healer.max_mana is None:
+                        self.healer.set_max_mana(status.mana_max)
+                    
+                    # Set status based on app state
+                    if self.active:
+                        self.overlay.set_status("✅ Running")
                         
-                        # Auto-detect max HP and Mana (always updates)
-                        if status.hp and self.healer.max_hp is None:
-                            self.healer.auto_detect_max_hp(status.hp)
-                            self.overlay.set_max_hp(self.healer.max_hp)
+                        # Perform healing actions (silently)
+                        heal_result = None
+                        mana_result = False
                         
-                        if status.mana and self.healer.max_mana is None:
-                            self.healer.auto_detect_max_mana(status.mana)
-                            self.overlay.set_max_mana(self.healer.max_mana)
+                        if status.hp_current:
+                            heal_result = self.healer.check_and_heal(status.hp_current)
                         
-                        # Only perform actions if bot is ACTIVE
-                        if self.active:
-                            # Check for healing (HP has priority)
-                            heal_result = None
-                            mana_result = False
-                            
-                            if status.hp:
-                                heal_result = self.healer.check_and_heal(status.hp)
-                            
-                            # Check for mana restore (only if not healing)
-                            if not heal_result and status.mana:
-                                mana_result = self.healer.check_and_restore_mana(status.mana)
-                            
-                            # Update status with action feedback
-                            if heal_result == "critical":
-                                self.overlay.set_status("🩹 Critical Heal!")
-                            elif heal_result == "normal":
-                                self.overlay.set_status("🩹 Healed!")
-                            elif mana_result:
-                                self.overlay.set_status("🔷 Mana Restored!")
-                            elif self.healer.is_on_cooldown():
-                                cd = self.healer.get_cooldown_remaining()
-                                self.overlay.set_status(f"✅ Running (CD: {cd:.1f}s)")
-                            else:
-                                hp_pct = self.healer.get_hp_percent(status.hp) if status.hp else 100
-                                mana_pct = self.healer.get_mana_percent(status.mana) if status.mana else 100
-                                self.overlay.set_status(f"✅ HP:{hp_pct:.0f}% M:{mana_pct:.0f}%")
-                        else:
-                             self.overlay.set_status("⏸️ Monitoring...")
+                        if not heal_result and status.mana_current:
+                            mana_result = self.healer.check_and_restore_mana(status.mana_current)
                     else:
-                        self.overlay.set_status("🔍 Reading..." if self.active else "⏸️ Monitoring...")
+                        self.overlay.set_status("⏸️ Monitoring")
+                else:
+                    self.overlay.set_status("🔍 Reading...")
                 
                 time.sleep(wait)
                 
             except Exception as e:
-                print(f"❌ ERROR in bot loop: {e}")
+                print(f"❌ ERROR: {e}")
                 traceback.print_exc()
-                self.overlay.set_status(f"❌ Error: {str(e)[:30]}")
+                self.overlay.set_status(f"❌ Error: {str(e)[:20]}")
                 time.sleep(1)
     
     def run(self):
@@ -132,11 +200,30 @@ class TibiaBot:
         bot_thread.start()
         
         # Run overlay in main thread
-        self.overlay.run()
+        self.overlay.create_window()
+        
+        # Set loaded config in UI (after window is created)
+        config = self.config_manager.config
+        
+        # Set region status
+        if config.regions.hp_region:
+            self.overlay.set_hp_region_status(True, config.regions.hp_region)
+        if config.regions.mana_region:
+            self.overlay.set_mana_region_status(True, config.regions.mana_region)
+        
+        # Set hotkeys
+        self.overlay.set_hotkeys(
+            config.healer.heal_hotkey,
+            config.healer.critical_hotkey, 
+            config.healer.mana_hotkey
+        )
+        
+        # Start mainloop
+        self.overlay.root.mainloop()
         
         # Cleanup
         self.running = False
-        self.capture.close()
+        self.sct.close()
 
 
 def main():
@@ -147,13 +234,18 @@ def main():
         print("⚠️ Tesseract not found! Install: brew install tesseract")
         return
     
-    overlay = BotOverlay()
-    bot = TibiaBot(overlay)
+    # Initialize config manager
+    config_manager = ConfigManager()
+    config_manager.load()
+    
+    # Create overlay and bot
+    overlay = TibiaStyleOverlay()
+    bot = TibiaBot(overlay, config_manager)
     
     overlay.on_start = bot.start
     overlay.on_stop = bot.stop
     
-    print(f"Starting {BOT_NAME} with overlay...")
+    print(f"Starting Windify Helper...")
     bot.run()
 
 

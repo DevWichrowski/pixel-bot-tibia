@@ -1,0 +1,27 @@
+{
+  "regions": {
+    "hp_region": [
+      645,
+      45,
+      87,
+      33
+    ],
+    "mana_region": [
+      1663,
+      52,
+      68,
+      23
+    ]
+  },
+  "healer": {
+    "heal_enabled": true,
+    "heal_threshold": 75,
+    "heal_hotkey": "F1",
+    "critical_enabled": true,
+    "critical_threshold": 50,
+    "critical_hotkey": "F3",
+    "mana_enabled": true,
+    "mana_threshold": 60,
+    "mana_hotkey": "F4"
+  }
+}

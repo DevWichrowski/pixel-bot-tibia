@@ -1,7 +1,7 @@
 """
-Tibia Pixel Bot - HP/Mana Reader
-Uses template matching with Stop button as anchor.
-Below Stop button: first line = HP, second line = Mana.
+Windify Bot - HP/Mana Reader
+Reads HP and Mana values from user-defined screen regions.
+Format: "current/max" (e.g., "1301/1301")
 """
 
 import re
@@ -10,210 +10,264 @@ import numpy as np
 from PIL import Image
 from dataclasses import dataclass
 from typing import Optional, Tuple
-from pathlib import Path
 import pytesseract
 
 
 @dataclass
 class StatusReading:
-    hp: Optional[int]
-    mana: Optional[int]
-    timestamp: float = 0.0
+    """Current HP and Mana status."""
+    hp_current: Optional[int] = None
+    hp_max: Optional[int] = None
+    mana_current: Optional[int] = None
+    mana_max: Optional[int] = None
+    
+    @property
+    def hp(self) -> Optional[int]:
+        """Alias for hp_current for backward compatibility."""
+        return self.hp_current
+    
+    @property
+    def mana(self) -> Optional[int]:
+        """Alias for mana_current for backward compatibility."""
+        return self.mana_current
     
     def __str__(self):
-        hp_str = str(self.hp) if self.hp else "?"
-        mana_str = str(self.mana) if self.mana else "?"
+        hp_str = f"{self.hp_current}/{self.hp_max}" if self.hp_current else "?"
+        mana_str = f"{self.mana_current}/{self.mana_max}" if self.mana_current else "?"
         return f"HP: {hp_str} | Mana: {mana_str}"
 
 
 class HPManaReader:
+    """
+    Reads HP and Mana from user-defined screen regions.
+    Uses OCR to parse "current/max" format (e.g., "1301/1301").
+    """
+    
     def __init__(self):
-        self.template_path = Path(__file__).parent / "templates" / "status_bar_template.png"
-        self.template = None
-        self.region = None  # (x, y, w, h) of status panel
-        self.last_hp = None
-        self.last_mana = None
-        self._load_template()
+        # User-defined regions (x, y, width, height)
+        self.hp_region: Optional[Tuple[int, int, int, int]] = None
+        self.mana_region: Optional[Tuple[int, int, int, int]] = None
+        
+        # Cache last valid readings
+        self.last_hp_current: Optional[int] = None
+        self.last_hp_max: Optional[int] = None
+        self.last_mana_current: Optional[int] = None
+        self.last_mana_max: Optional[int] = None
+        
+        # Retina display scale factor
+        self._scale = self._detect_scale()
     
-    def _load_template(self):
-        if self.template_path.exists():
-            self.template = cv2.imread(str(self.template_path))
-            if self.template is not None:
-                print(f"✅ Template: {self.template.shape[1]}x{self.template.shape[0]}")
+    def _detect_scale(self) -> float:
+        """Detect Retina display scaling."""
+        try:
+            import Quartz
+            main = Quartz.CGMainDisplayID()
+            mode = Quartz.CGDisplayCopyDisplayMode(main)
+            if mode:
+                logical = Quartz.CGDisplayModeGetWidth(mode)
+                pixel = Quartz.CGDisplayModeGetPixelWidth(mode)
+                if logical > 0:
+                    return pixel / logical
+        except:
+            pass
+        return 1.0
     
-    def find_status_panel(self, screenshot: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
-        """Find status panel using template matching."""
-        if self.template is None:
+    def set_regions(
+        self, 
+        hp_region: Optional[Tuple[int, int, int, int]] = None,
+        mana_region: Optional[Tuple[int, int, int, int]] = None
+    ) -> None:
+        """Set the screen regions for HP and Mana reading."""
+        if hp_region:
+            self.hp_region = hp_region
+            print(f"📍 HP region set: {hp_region}")
+        if mana_region:
+            self.mana_region = mana_region
+            print(f"📍 Mana region set: {mana_region}")
+    
+    def is_configured(self) -> bool:
+        """Check if both regions are configured."""
+        return self.hp_region is not None and self.mana_region is not None
+    
+    def _scale_region(self, region: Tuple[int, int, int, int]) -> Tuple[int, int, int, int]:
+        """Scale region coordinates for Retina displays."""
+        x, y, w, h = region
+        return (
+            int(x * self._scale),
+            int(y * self._scale),
+            int(w * self._scale),
+            int(h * self._scale)
+        )
+    
+    def _crop_region(self, image: Image.Image, region: Tuple[int, int, int, int]) -> Image.Image:
+        """Crop image to specified region."""
+        x, y, w, h = region
+        return image.crop((x, y, x + w, y + h))
+    
+    def _parse_current_max(self, text: str) -> Optional[Tuple[int, int]]:
+        """
+        Parse "current/max" format from OCR text.
+        Examples: "1301/1301", "945/1301"
+        Returns: (current, max) or None
+        """
+        # Clean text
+        text = text.strip().replace(" ", "").replace(",", "")
+        
+        # Match pattern: digits / digits
+        match = re.match(r'(\d+)[/|](\d+)', text)
+        if match:
+            current = int(match.group(1))
+            max_val = int(match.group(2))
+            
+            # Validate reasonable values
+            if 1 <= current <= 99999 and 1 <= max_val <= 99999:
+                return (current, max_val)
+        
+        return None
+    
+    def _ocr_region(self, img: Image.Image) -> str:
+        """Perform OCR on a region image."""
+        # Convert to grayscale numpy array
+        arr = np.array(img.convert('L'))
+        
+        # Try multiple threshold approaches for best results
+        results = []
+        
+        # Try normal thresholding with expanded range
+        for thresh in [60, 80, 100, 120, 140, 160, 180]:
+            _, binary = cv2.threshold(arr, thresh, 255, cv2.THRESH_BINARY)
+            
+            # Scale up for better OCR
+            scaled = cv2.resize(binary, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+            
+            # Add padding
+            padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
+            
+            try:
+                text = pytesseract.image_to_string(
+                    padded,
+                    config='--psm 7 -c tessedit_char_whitelist=0123456789/'
+                ).strip()
+                
+                if text and '/' in text:
+                    return text  # Return immediately if we get a valid result
+                elif text:
+                    results.append(text)
+            except:
+                pass
+        
+        # Try inverted thresholding (for light text on dark background)
+        for thresh in [60, 80, 100, 120, 140, 160]:
+            _, binary = cv2.threshold(arr, thresh, 255, cv2.THRESH_BINARY_INV)
+            
+            scaled = cv2.resize(binary, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+            padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
+            
+            try:
+                text = pytesseract.image_to_string(
+                    padded,
+                    config='--psm 7 -c tessedit_char_whitelist=0123456789/'
+                ).strip()
+                
+                if text and '/' in text:
+                    return text
+                elif text:
+                    results.append(text)
+            except:
+                pass
+        
+        return results[0] if results else ""
+    
+    def read_hp(self, screenshot: Image.Image) -> Optional[Tuple[int, int]]:
+        """
+        Read HP from screenshot.
+        Returns: (current, max) or None
+        """
+        if not self.hp_region:
             return None
         
-        best_match = None
-        best_val = 0
-        
-        # Try different scales
-        for scale in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]:
-            w = int(self.template.shape[1] * scale)
-            h = int(self.template.shape[0] * scale)
+        try:
+            # Scale region for Retina
+            scaled_region = self._scale_region(self.hp_region)
             
-            if w < 50 or h < 10 or w > screenshot.shape[1] or h > screenshot.shape[0]:
-                continue
+            # Crop HP region
+            hp_img = self._crop_region(screenshot, scaled_region)
             
-            resized = cv2.resize(self.template, (w, h))
-            result = cv2.matchTemplate(screenshot, resized, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            # OCR
+            text = self._ocr_region(hp_img)
             
-            if max_val > best_val:
-                best_val = max_val
-                best_match = (max_loc[0], max_loc[1], w, h)
-        
-        if best_match and best_val > 0.6:
-            print(f"📍 Match: {best_val:.1%} at ({best_match[0]}, {best_match[1]})")
-            return best_match
+            # Parse
+            result = self._parse_current_max(text)
+            
+            if result:
+                self.last_hp_current, self.last_hp_max = result
+                return result
+            
+        except Exception as e:
+            print(f"⚠️ HP read error: {e}")
         
         return None
     
-    def read_numbers(self, image: Image.Image, region: Tuple[int, int, int, int]) -> Tuple[Optional[int], Optional[int]]:
+    def read_mana(self, screenshot: Image.Image) -> Optional[Tuple[int, int]]:
         """
-        Read HP and Mana from BELOW the Stop button.
-        Region is where Stop button was found - numbers are below it.
+        Read Mana from screenshot.
+        Returns: (current, max) or None
         """
-        x, y, w, h = region
-        
-        # Stop button is the matched region
-        # Numbers are BELOW the Stop button
-        
-        numbers_y_start = y + h  # Start right below Stop button
-        numbers_width = 80  # Width to capture 5-digit numbers
-        numbers_height = 45  # Total height for both lines
-        
-        # Start 10px to the left to capture all digits
-        start_x = max(0, x - 10)
-        
-        # Crop full numbers region from original image
-        numbers_region = image.crop((
-            start_x,
-            numbers_y_start,
-            start_x + numbers_width,
-            numbers_y_start + numbers_height
-        ))
-        
-        # HP at rows 5-20, Mana at rows 22-40
-        hp_region = numbers_region.crop((0, 5, numbers_width, 20))
-        mana_region = numbers_region.crop((0, 22, numbers_width, 40))
-        
-        hp = self._read_single_number(hp_region)
-        mana = self._read_single_number(mana_region)
-        
-        return hp, mana
-    
-    def _read_single_number(self, img: Image.Image) -> Optional[int]:
-        """OCR a single number from a small region."""
-        arr = np.array(img.convert('L'))
-        
-        # Try multiple PSM modes and thresholds
-        for psm in [7, 12, 8]:
-            for thresh in [80, 100, 120]:
-                _, binary = cv2.threshold(arr, thresh, 255, cv2.THRESH_BINARY)
-                scaled = cv2.resize(binary, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
-                padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
-                
-                try:
-                    text = pytesseract.image_to_string(
-                        padded, config=f'--psm {psm} -c tessedit_char_whitelist=0123456789'
-                    ).strip()
-                    
-                    if text and text.isdigit() and 2 <= len(text) <= 5:
-                        return int(text)
-                except:
-                    pass
-        
-        return None
-    
-    def _ocr_numbers(self, binary: np.ndarray) -> Tuple[Optional[int], Optional[int]]:
-        """OCR binary image and extract HP/Mana numbers."""
-        scaled = cv2.resize(binary, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
-        padded = cv2.copyMakeBorder(scaled, 15, 15, 15, 15, cv2.BORDER_CONSTANT, value=255)
+        if not self.mana_region:
+            return None
         
         try:
-            # PSM 11 works best for sparse text with numbers
-            text = pytesseract.image_to_string(
-                padded,
-                config='--psm 11 -c tessedit_char_whitelist=0123456789'
-            ).strip()
+            # Scale region for Retina
+            scaled_region = self._scale_region(self.mana_region)
             
-            numbers = re.findall(r'\d{2,5}', text)
+            # Crop Mana region
+            mana_img = self._crop_region(screenshot, scaled_region)
             
-            if len(numbers) >= 2:
-                return int(numbers[0]), int(numbers[1])
-            elif len(numbers) == 1:
-                return int(numbers[0]), None
-        except:
-            pass
-        
-        return None, None
-    
-    def _read_number(self, img: Image.Image) -> Optional[int]:
-        """OCR a region to extract a number."""
-        arr = np.array(img.convert('L'))
-        
-        _, binary = cv2.threshold(arr, 150, 255, cv2.THRESH_BINARY)
-        scaled = cv2.resize(binary, None, fx=4, fy=4, interpolation=cv2.INTER_CUBIC)
-        padded = cv2.copyMakeBorder(scaled, 15, 15, 15, 15, cv2.BORDER_CONSTANT, value=255)
-        
-        try:
-            text = pytesseract.image_to_string(
-                padded,
-                config='--psm 7 -c tessedit_char_whitelist=0123456789'
-            ).strip()
+            # OCR
+            text = self._ocr_region(mana_img)
             
-            if text and text.isdigit() and 2 <= len(text) <= 5:
-                return int(text)
-        except:
-            pass
+            # Parse
+            result = self._parse_current_max(text)
+            
+            if result:
+                self.last_mana_current, self.last_mana_max = result
+                return result
+            
+        except Exception as e:
+            print(f"⚠️ Mana read error: {e}")
         
         return None
     
-    def read_status(self, image: Image.Image) -> StatusReading:
-        """Read HP and Mana from screenshot."""
-        import time
-        
-        screenshot_np = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-        
-        if self.region is None:
-            self.region = self.find_status_panel(screenshot_np)
-        
-        if self.region is None:
-            return StatusReading(hp=self.last_hp, mana=self.last_mana)
-        
-        hp, mana = self.read_numbers(image, self.region)
-        
-        if hp: self.last_hp = hp
-        if mana: self.last_mana = mana
+    def read_status(self, screenshot: Image.Image) -> StatusReading:
+        """
+        Read both HP and Mana from screenshot.
+        Returns StatusReading with current values or cached values if read fails.
+        """
+        hp_result = self.read_hp(screenshot)
+        mana_result = self.read_mana(screenshot)
         
         return StatusReading(
-            hp=hp or self.last_hp,
-            mana=mana or self.last_mana,
-            timestamp=time.time()
+            hp_current=hp_result[0] if hp_result else self.last_hp_current,
+            hp_max=hp_result[1] if hp_result else self.last_hp_max,
+            mana_current=mana_result[0] if mana_result else self.last_mana_current,
+            mana_max=mana_result[1] if mana_result else self.last_mana_max,
         )
     
     def reset(self):
-        self.region = None
+        """Reset cached values (call on window change)."""
+        self.last_hp_current = None
+        self.last_hp_max = None
+        self.last_mana_current = None
+        self.last_mana_max = None
 
 
+# Test
 if __name__ == "__main__":
-    from window_finder import find_tibia_window
-    from screen_capture import ScreenCapture
+    reader = HPManaReader()
     
-    window = find_tibia_window()
-    if window:
-        print(f"Window: {window['name']}")
-        capture = ScreenCapture()
-        img = capture.capture_window(window)
-        
-        if img:
-            reader = HPManaReader()
-            status = reader.read_status(img)
-            print(f"\n{status}")
-        
-        capture.close()
-    else:
-        print("Tibia not found!")
+    # Test parsing
+    assert reader._parse_current_max("1301/1301") == (1301, 1301)
+    assert reader._parse_current_max("945/1301") == (945, 1301)
+    assert reader._parse_current_max("435/435") == (435, 435)
+    
+    print("✅ Parser tests passed")

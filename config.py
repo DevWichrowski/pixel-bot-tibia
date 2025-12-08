@@ -3,6 +3,6 @@ Tibia Pixel Bot - Configuration
 """
 
 # Bot settings
-BOT_NAME = "Windify Bot"
+BOT_NAME = "Windify Helper"
 REFRESH_RATE = 5  # Reads per second (5 FPS is good for OCR)
 DEBUG_MODE = False
