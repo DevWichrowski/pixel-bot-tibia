@@ -70,6 +70,11 @@ class TibiaStyleOverlay:
         self.on_critical_hotkey_change: Optional[Callable[[str], None]] = None
         self.on_mana_hotkey_change: Optional[Callable[[str], None]] = None
         
+        # Auto Eater callbacks
+        self.on_eater_toggle: Optional[Callable[[bool], None]] = None
+        self.on_food_type_change: Optional[Callable[[str], None]] = None
+        self.on_eater_hotkey_change: Optional[Callable[[str], None]] = None
+        
         # UI variables
         self.status_var: Optional[tk.StringVar] = None
         self.hp_var: Optional[tk.StringVar] = None
@@ -89,6 +94,11 @@ class TibiaStyleOverlay:
         self.heal_threshold_var = None
         self.critical_threshold_var = None
         self.mana_threshold_var = None
+        
+        # Eater vars
+        self.eater_enabled = None
+        self.food_type_var = None
+        self.eater_hotkey_var = None
         
         # Region selector
         self.region_selector = RegionSelector()
@@ -308,6 +318,10 @@ class TibiaStyleOverlay:
         self._create_heal_row(frame, "Mana (F4)", self.mana_enabled, self.mana_threshold_var,
                               self._on_mana_toggle, self._on_mana_threshold_change, self.THEME["mana"])
         
+        # Auto Eater toggle
+        self.eater_enabled = tk.BooleanVar(value=False)
+        self._create_simple_toggle(frame, "Auto Eater", self.eater_enabled, self._on_eater_toggle, self.THEME["accent_bright"])
+        
         self._add_separator(frame)
         
         # Start/Stop button
@@ -335,6 +349,24 @@ class TibiaStyleOverlay:
             fg=self.THEME["error"],
             bg=self.THEME["bg"]
         )
+    
+    def _create_simple_toggle(self, parent, label, enabled_var, toggle_cmd, color):
+        """Create a simple toggle row (no inputs)."""
+        row = tk.Frame(parent, bg=self.THEME["bg"])
+        row.pack(fill="x", pady=2)
+        
+        cb = tk.Checkbutton(
+            row,
+            text=label,
+            variable=enabled_var,
+            command=toggle_cmd,
+            font=("Courier", 10),
+            fg=color,
+            bg=self.THEME["bg"],
+            selectcolor=self.THEME["bg_dark"],
+            activebackground=self.THEME["bg"]
+        )
+        cb.pack(side="left")
     
     def _create_heal_row(self, parent, label, enabled_var, threshold_var, toggle_cmd, threshold_cmd, color):
         """Create a heal toggle row."""
@@ -413,10 +445,39 @@ class TibiaStyleOverlay:
         
         self._add_separator(frame)
         
+        # Auto Eater Config
+        tk.Label(
+            frame,
+            text="Food Configuration",
+            font=("Courier", 10, "bold"),
+            fg=self.THEME["accent"],
+            bg=self.THEME["bg"]
+        ).pack(pady=(5, 8))
+        
+        # Food Type Dropdown (simulated with OptionMenu)
+        food_row = tk.Frame(frame, bg=self.THEME["bg"])
+        food_row.pack(fill="x", pady=2, padx=5)
+        tk.Label(food_row, text="Food Type:", font=("Courier", 10), fg=self.THEME["text"], bg=self.THEME["bg"], width=10, anchor="w").pack(side="left")
+        
+        self.food_type_var = tk.StringVar(value="fire_mushroom")
+        food_options = ["fire_mushroom", "brown_mushroom"]
+        
+        # Custom styling for OptionMenu is tricky in Tkinter, using basic for now
+        om = tk.OptionMenu(food_row, self.food_type_var, *food_options, command=self._on_food_type_change)
+        om.configure(bg=self.THEME["bg_dark"], fg=self.THEME["text"], highlightthickness=0, relief="flat", width=15)
+        om["menu"].config(bg=self.THEME["bg_dark"], fg=self.THEME["text"])
+        om.pack(side="left", padx=5)
+        
+        # Eater Hotkey
+        self.eater_hotkey_var = tk.StringVar(value="]")
+        self._create_hotkey_row(frame, "Food Key:", self.eater_hotkey_var, "eater")
+        
+        self._add_separator(frame)
+        
         # Hotkeys Section
         tk.Label(
             frame,
-            text="Hotkey Configuration",
+            text="Heal Hotkeys",
             font=("Courier", 10, "bold"),
             fg=self.THEME["accent"],
             bg=self.THEME["bg"]
@@ -523,6 +584,8 @@ class TibiaStyleOverlay:
                 self.on_critical_hotkey_change(key)
             elif hotkey_type == "mana" and self.on_mana_hotkey_change:
                 self.on_mana_hotkey_change(key)
+            elif hotkey_type == "eater" and self.on_eater_hotkey_change:
+                self.on_eater_hotkey_change(key)
             
             print(f"🔑 {hotkey_type} hotkey set to: {key}")
         
@@ -666,6 +729,14 @@ class TibiaStyleOverlay:
     def _on_mana_toggle(self):
         if self.on_mana_toggle:
             self.on_mana_toggle(self.mana_enabled.get())
+            
+    def _on_eater_toggle(self):
+        if self.on_eater_toggle:
+            self.on_eater_toggle(self.eater_enabled.get())
+            
+    def _on_food_type_change(self, value):
+        if self.on_food_type_change:
+            self.on_food_type_change(value)
     
     def _on_heal_threshold_change(self, event=None):
         try:

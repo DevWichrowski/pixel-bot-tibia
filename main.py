@@ -11,6 +11,7 @@ from config import BOT_NAME, REFRESH_RATE
 from hp_mana_reader import HPManaReader
 from overlay import TibiaStyleOverlay
 from healer import AutoHealer, press_key
+from eater import AutoEater
 from user_config import ConfigManager
 
 
@@ -20,6 +21,7 @@ class TibiaBot:
         self.config_manager = config_manager
         self.reader = HPManaReader()
         self.healer = AutoHealer(press_key)
+        self.eater = AutoEater(press_key)
         self.running = False
         self.active = False
         self.sct = mss.mss()  # Screen capture
@@ -55,6 +57,12 @@ class TibiaBot:
         self.healer.mana_restore.enabled = healer_cfg.mana_enabled
         self.healer.mana_restore.threshold = healer_cfg.mana_threshold
         self.healer.mana_restore.hotkey = healer_cfg.mana_hotkey
+        
+        # Load eater config
+        eater_cfg = config.eater
+        self.eater.enabled = eater_cfg.enabled
+        self.eater.set_food_type(eater_cfg.food_type)
+        self.eater.hotkey = eater_cfg.hotkey
     
     def _setup_callbacks(self):
         """Connect overlay controls to bot functionality."""
@@ -65,6 +73,11 @@ class TibiaBot:
         self.overlay.on_heal_threshold_change = self._on_heal_threshold_change
         self.overlay.on_critical_threshold_change = self._on_critical_threshold_change
         self.overlay.on_mana_threshold_change = self._on_mana_threshold_change
+        
+        # Eater callbacks
+        self.overlay.on_eater_toggle = self._on_eater_toggle
+        self.overlay.on_food_type_change = self._on_food_type_change
+        self.overlay.on_eater_hotkey_change = self._on_eater_hotkey_change
         
         # Hotkey change callbacks
         self.overlay.on_heal_hotkey_change = self._on_heal_hotkey_change
@@ -90,6 +103,21 @@ class TibiaBot:
     def _on_mana_toggle(self, enabled: bool):
         self.healer.toggle_mana_restore(enabled)
         self.config_manager.config.healer.mana_enabled = enabled
+        self.config_manager.save()
+        
+    def _on_eater_toggle(self, enabled: bool):
+        self.eater.toggle(enabled)
+        self.config_manager.config.eater.enabled = enabled
+        self.config_manager.save()
+        
+    def _on_food_type_change(self, value: str):
+        self.eater.set_food_type(value)
+        self.config_manager.config.eater.food_type = value
+        self.config_manager.save()
+        
+    def _on_eater_hotkey_change(self, key: str):
+        self.eater.hotkey = key
+        self.config_manager.config.eater.hotkey = key
         self.config_manager.save()
         
     def _on_heal_threshold_change(self, value: int):
@@ -174,6 +202,10 @@ class TibiaBot:
         
         while self.running:
             try:
+                # Check Auto Eater regardless of regions (it's time based)
+                if self.active:
+                    self.eater.check_and_eat()
+
                 # Only read if regions are configured
                 if not self.reader.is_configured():
                     time.sleep(0.5)
@@ -249,10 +281,19 @@ class TibiaBot:
             config.healer.mana_hotkey
         )
         
-        # Set persistent healer values in UI
+        # Manually set eater hotkey since it's separate
+        if self.overlay.eater_hotkey_var:
+             self.overlay.eater_hotkey_var.set(config.eater.hotkey)
+             
+        # Set food type
+        if self.overlay.food_type_var:
+            self.overlay.food_type_var.set(config.eater.food_type)
+        
+        # Set persistent healer/eater values in UI
         if self.overlay.heal_enabled: self.overlay.heal_enabled.set(config.healer.heal_enabled)
         if self.overlay.critical_enabled: self.overlay.critical_enabled.set(config.healer.critical_enabled)
         if self.overlay.mana_enabled: self.overlay.mana_enabled.set(config.healer.mana_enabled)
+        if self.overlay.eater_enabled: self.overlay.eater_enabled.set(config.eater.enabled)
         
         if self.overlay.heal_threshold_var: self.overlay.heal_threshold_var.set(str(config.healer.heal_threshold))
         if self.overlay.critical_threshold_var: self.overlay.critical_threshold_var.set(str(config.healer.critical_threshold))

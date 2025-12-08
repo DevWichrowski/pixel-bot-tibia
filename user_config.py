@@ -42,10 +42,19 @@ class HealerConfig:
 
 
 @dataclass
+class EaterConfig:
+    """Configuration for auto eater."""
+    enabled: bool = False
+    food_type: str = "fire_mushroom"
+    hotkey: str = "]"
+
+
+@dataclass
 class UserConfig:
     """Complete user configuration."""
     regions: RegionConfig = field(default_factory=RegionConfig)
     healer: HealerConfig = field(default_factory=HealerConfig)
+    eater: EaterConfig = field(default_factory=EaterConfig)
 
 
 class ConfigManager:
@@ -129,13 +138,15 @@ class ConfigManager:
                 "hp_region": list(config.regions.hp_region) if config.regions.hp_region else None,
                 "mana_region": list(config.regions.mana_region) if config.regions.mana_region else None,
             },
-            "healer": asdict(config.healer)
+            "healer": asdict(config.healer),
+            "eater": asdict(config.eater)
         }
     
     def _from_dict(self, data: Dict[str, Any]) -> UserConfig:
         """Create config from dict."""
         regions_data = data.get("regions", {})
         healer_data = data.get("healer", {})
+        eater_data = data.get("eater", {})
         
         hp_region = regions_data.get("hp_region")
         mana_region = regions_data.get("mana_region")
@@ -145,7 +156,8 @@ class ConfigManager:
                 hp_region=tuple(hp_region) if hp_region else None,
                 mana_region=tuple(mana_region) if mana_region else None,
             ),
-            healer=HealerConfig(**healer_data) if healer_data else HealerConfig()
+            healer=HealerConfig(**healer_data) if healer_data else HealerConfig(),
+            eater=EaterConfig(**eater_data) if eater_data else EaterConfig()
         )
 
 
