@@ -368,6 +368,7 @@ class TibiaStyleOverlay:
         )
         entry.pack(side="left")
         entry.bind("<Return>", threshold_cmd)
+        entry.bind("<FocusOut>", threshold_cmd)  # Also save on click away
         self.entries.append(entry)
         
         tk.Label(row, text="%", fg=self.THEME["text_dim"], bg=self.THEME["bg"]).pack(side="left")

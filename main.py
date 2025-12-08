@@ -58,13 +58,13 @@ class TibiaBot:
     
     def _setup_callbacks(self):
         """Connect overlay controls to bot functionality."""
-        # Healer callbacks
-        self.overlay.on_heal_toggle = self.healer.toggle_heal
-        self.overlay.on_critical_toggle = self.healer.toggle_critical_heal
-        self.overlay.on_mana_toggle = self.healer.toggle_mana_restore
-        self.overlay.on_heal_threshold_change = self.healer.set_heal_threshold
-        self.overlay.on_critical_threshold_change = self.healer.set_critical_threshold
-        self.overlay.on_mana_threshold_change = self.healer.set_mana_threshold
+        # Healer callbacks - mapped to persistent wrappers
+        self.overlay.on_heal_toggle = self._on_heal_toggle
+        self.overlay.on_critical_toggle = self._on_critical_toggle
+        self.overlay.on_mana_toggle = self._on_mana_toggle
+        self.overlay.on_heal_threshold_change = self._on_heal_threshold_change
+        self.overlay.on_critical_threshold_change = self._on_critical_threshold_change
+        self.overlay.on_mana_threshold_change = self._on_mana_threshold_change
         
         # Hotkey change callbacks
         self.overlay.on_heal_hotkey_change = self._on_heal_hotkey_change
@@ -75,6 +75,37 @@ class TibiaBot:
         self.overlay.on_hp_region_select = self._on_hp_region_selected
         self.overlay.on_mana_region_select = self._on_mana_region_selected
         self.overlay.on_reset_config = self._on_reset_config
+
+    # Persistent Config Wrappers
+    def _on_heal_toggle(self, enabled: bool):
+        self.healer.toggle_heal(enabled)
+        self.config_manager.config.healer.heal_enabled = enabled
+        self.config_manager.save()
+        
+    def _on_critical_toggle(self, enabled: bool):
+        self.healer.toggle_critical_heal(enabled)
+        self.config_manager.config.healer.critical_enabled = enabled
+        self.config_manager.save()
+        
+    def _on_mana_toggle(self, enabled: bool):
+        self.healer.toggle_mana_restore(enabled)
+        self.config_manager.config.healer.mana_enabled = enabled
+        self.config_manager.save()
+        
+    def _on_heal_threshold_change(self, value: int):
+        self.healer.set_heal_threshold(value)
+        self.config_manager.config.healer.heal_threshold = value
+        self.config_manager.save()
+        
+    def _on_critical_threshold_change(self, value: int):
+        self.healer.set_critical_threshold(value)
+        self.config_manager.config.healer.critical_threshold = value
+        self.config_manager.save()
+        
+    def _on_mana_threshold_change(self, value: int):
+        self.healer.set_mana_threshold(value)
+        self.config_manager.config.healer.mana_threshold = value
+        self.config_manager.save()
     
     def _on_hp_region_selected(self, region: tuple):
         """Handle HP region selection."""
@@ -217,6 +248,15 @@ class TibiaBot:
             config.healer.critical_hotkey, 
             config.healer.mana_hotkey
         )
+        
+        # Set persistent healer values in UI
+        if self.overlay.heal_enabled: self.overlay.heal_enabled.set(config.healer.heal_enabled)
+        if self.overlay.critical_enabled: self.overlay.critical_enabled.set(config.healer.critical_enabled)
+        if self.overlay.mana_enabled: self.overlay.mana_enabled.set(config.healer.mana_enabled)
+        
+        if self.overlay.heal_threshold_var: self.overlay.heal_threshold_var.set(str(config.healer.heal_threshold))
+        if self.overlay.critical_threshold_var: self.overlay.critical_threshold_var.set(str(config.healer.critical_threshold))
+        if self.overlay.mana_threshold_var: self.overlay.mana_threshold_var.set(str(config.healer.mana_threshold))
         
         # Start mainloop
         self.overlay.root.mainloop()

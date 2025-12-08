@@ -11,6 +11,7 @@ from PIL import Image
 from dataclasses import dataclass
 from typing import Optional, Tuple
 import pytesseract
+from config import DEBUG_MODE
 
 
 @dataclass
@@ -110,7 +111,7 @@ class HPManaReader:
         Examples: "1301/1301", "945/1301"
         Returns: (current, max) or None
         """
-        # Clean text
+        # Clean text - remove spaces, commas, and common OCR errors
         text = text.strip().replace(" ", "").replace(",", "")
         
         # Match pattern: digits / digits
@@ -119,64 +120,67 @@ class HPManaReader:
             current = int(match.group(1))
             max_val = int(match.group(2))
             
-            # Validate reasonable values
+            # CRITICAL: current can NEVER be greater than max!
+            # If OCR misreads "1391" as "13991", this catches it
+            if current > max_val:
+                print(f"⚠️ OCR error: current ({current}) > max ({max_val}), rejecting")
+                return None
+            
+            # Validate reasonable values (typical Tibia HP/Mana range)
             if 1 <= current <= 99999 and 1 <= max_val <= 99999:
                 return (current, max_val)
         
         return None
     
     def _ocr_region(self, img: Image.Image) -> str:
-        """Perform OCR on a region image."""
+        """Perform OCR on a region image. Optimized for speed."""
         # Convert to grayscale numpy array
         arr = np.array(img.convert('L'))
         
-        # Try multiple threshold approaches for best results
-        results = []
+        # Use only 3 best thresholds instead of 13 - ~4x faster!
+        # These values work well for Tibia's text contrast
+        best_thresholds = [100, 140, 180]
         
-        # Try normal thresholding with expanded range
-        for thresh in [60, 80, 100, 120, 140, 160, 180]:
+        for thresh in best_thresholds:
             _, binary = cv2.threshold(arr, thresh, 255, cv2.THRESH_BINARY)
             
             # Scale up for better OCR
             scaled = cv2.resize(binary, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
             
-            # Add padding
-            padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
+            # Add padding - increased to 20 to reduce edge artifacts
+            padded = cv2.copyMakeBorder(scaled, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
             
             try:
                 text = pytesseract.image_to_string(
                     padded,
                     config='--psm 7 -c tessedit_char_whitelist=0123456789/'
                 ).strip()
+                
+                # Debug raw OCR for analysis
+                if DEBUG_MODE:
+                    print(f"DEBUG OCR (thresh={thresh}): '{text}'")
                 
                 if text and '/' in text:
                     return text  # Return immediately if we get a valid result
-                elif text:
-                    results.append(text)
             except:
                 pass
         
-        # Try inverted thresholding (for light text on dark background)
-        for thresh in [60, 80, 100, 120, 140, 160]:
-            _, binary = cv2.threshold(arr, thresh, 255, cv2.THRESH_BINARY_INV)
-            
-            scaled = cv2.resize(binary, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-            padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
-            
-            try:
-                text = pytesseract.image_to_string(
-                    padded,
-                    config='--psm 7 -c tessedit_char_whitelist=0123456789/'
-                ).strip()
-                
-                if text and '/' in text:
-                    return text
-                elif text:
-                    results.append(text)
-            except:
-                pass
+        # Fallback: try inverted (light text on dark background)
+        _, binary = cv2.threshold(arr, 120, 255, cv2.THRESH_BINARY_INV)
+        scaled = cv2.resize(binary, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+        padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
         
-        return results[0] if results else ""
+        try:
+            text = pytesseract.image_to_string(
+                padded,
+                config='--psm 7 -c tessedit_char_whitelist=0123456789/'
+            ).strip()
+            if text and '/' in text:
+                return text
+        except:
+            pass
+        
+        return ""
     
     def read_hp(self, screenshot: Image.Image) -> Optional[Tuple[int, int]]:
         """
