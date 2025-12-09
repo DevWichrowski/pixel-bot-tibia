@@ -32,13 +32,19 @@ if exist venv\Scripts\activate.bat (
 
 echo [4/4] Instalacja bibliotek...
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
+if errorlevel 1 (
+    echo [BLAD] Nie udalo sie zainstalowac bibliotek.
+    echo Sprawdz polaczenie z internetem.
+    pause
+    exit /b
+)
 
 echo ==========================================
 echo      STARTOWANIE BOTA...
 echo ==========================================
 python main.py
-
-echo.
-echo [KONIEC] Aplikacja zakonczyla dzialanie.
-pause
+if errorlevel 1 (
+    echo [BLAD] Bot sie zamknal z bledem.
+    pause
+)
