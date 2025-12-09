@@ -140,9 +140,9 @@ class HPManaReader:
         # Convert to grayscale numpy array
         arr = np.array(img.convert('L'))
         
-        # WINDOWS SPEED: Only 2 thresholds for maximum speed
-        # These values work well for Tibia's text contrast
-        best_thresholds = [120, 160]
+        # More thresholds for better accuracy with Tibia fonts
+        # Helps distinguish similar characters like 5/9, 6/8
+        best_thresholds = [80, 100, 120, 140, 160]
         
         for thresh in best_thresholds:
             _, binary = cv2.threshold(arr, thresh, 255, cv2.THRESH_BINARY)
