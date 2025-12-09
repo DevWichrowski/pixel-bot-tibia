@@ -7,11 +7,13 @@ Postępuj dokładnie według kroków.
 CZĘŚĆ 1: INSTALACJA (Robisz to tylko raz)
 =========================================
 
-KROK 1: Instalacja Pythona
-1. Pobierz Python (wersja 3.10 lub nowsza) stąd: https://www.python.org/downloads/
-2. Uruchom instalator.
-3. BARDZO WAŻNE: Na pierwszym ekranie zaznacz "Add Python.exe to PATH". Bez tego nie zadziała!
-4. Kliknij "Install Now".
+KROK 1: Instalacja Pythona (Stabilna wersja)
+1. Pobierz Python **3.12** (nie nowszą!) stąd: https://www.python.org/downloads/release/python-3128/
+   (Zjedź na dół strony do sekcji "Files" i wybierz "Windows installer (64-bit)")
+2. Jeśli masz zainstalowaną wersję 3.13 lub 3.14 -> ODINSTALUJ JĄ najpierw. Te wersje są za nowe i psują bota.
+3. Uruchom instalator wersji 3.12.
+4. BARDZO WAŻNE: Na pierwszym ekranie zaznacz "Add Python.exe to PATH". Bez tego nie zadziała!
+5. Kliknij "Install Now".
 
 KROK 2: Instalacja Tesseract (Oczy bota)
 1. Pobierz instalator: https://github.com/UB-Mannheim/tesseract/wiki
