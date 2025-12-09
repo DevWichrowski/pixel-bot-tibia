@@ -37,17 +37,34 @@ class TibiaBot:
         self.monitor_idx = 1
         self.monitor_geometry = None
         
-        # Detect functionality
+        # Detect monitors
         try:
-             with mss.mss() as sct:
-                # auto-select secondary on Windows if available
+            with mss.mss() as sct:
+                print("🖥️ Detected monitors:")
+                for i, mon in enumerate(sct.monitors):
+                    if i == 0:
+                        print(f"   [0] Virtual screen (all monitors combined): {mon['width']}x{mon['height']}")
+                    else:
+                        print(f"   [{i}] Monitor {i}: {mon['width']}x{mon['height']} at ({mon['left']}, {mon['top']})")
+                
+                # Auto-select: on Windows with 2+ monitors, prefer the one that's NOT at (0,0)
+                # because primary is usually at (0,0) and secondary is offset
                 if platform.system() == "Windows" and len(sct.monitors) > 2:
-                    self.monitor_idx = 2
-                    print("🖥️ Windows detected: Defaulting to Secondary Monitor")
+                    # Find monitor that is NOT at position (0,0) - likely secondary
+                    for i in range(1, len(sct.monitors)):
+                        mon = sct.monitors[i]
+                        if mon['left'] != 0 or mon['top'] != 0:
+                            self.monitor_idx = i
+                            print(f"🎯 Auto-selected Monitor {i} (not at origin)")
+                            break
+                    else:
+                        self.monitor_idx = 2  # Fallback to monitor 2
+                        print(f"🎯 Auto-selected Monitor 2 (fallback)")
                 
                 # Cache geometry for region selector
                 if len(sct.monitors) > self.monitor_idx:
                     self.monitor_geometry = sct.monitors[self.monitor_idx]
+                    print(f"📍 Using monitor {self.monitor_idx}: {self.monitor_geometry}")
         except Exception as e:
             print(f"Monitor detect error: {e}")
 
