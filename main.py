@@ -15,6 +15,7 @@ from eater import AutoEater
 from haste import AutoHaste
 from skinner import AutoSkinner
 from user_config import ConfigManager
+import platform
 
 
 class TibiaBot:
@@ -364,7 +365,13 @@ def main():
         import pytesseract
         pytesseract.get_tesseract_version()
     except:
-        print("⚠️ Tesseract not found! Install: brew install tesseract")
+        if platform.system() == "Darwin":
+            print("⚠️ Tesseract not found! Install: brew install tesseract")
+        elif platform.system() == "Windows":
+             print("⚠️ Tesseract not found! Install Tesseract-OCR and add to PATH.")
+        else:
+             print("⚠️ Tesseract not found! Install tesseract-ocr package.")
+
         return
     
     # Initialize config manager

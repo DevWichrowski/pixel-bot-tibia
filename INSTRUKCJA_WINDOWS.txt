@@ -1,0 +1,58 @@
+INSTRUKCJA URUCHOMIENIA ORAZ OBSŁUGI (WINDOWS)
+
+Cześć! Poniżej znajdziesz kompletny przewodnik jak uruchomić i używać bota.
+Postępuj dokładnie według kroków.
+
+=========================================
+CZĘŚĆ 1: INSTALACJA (Robisz to tylko raz)
+=========================================
+
+KROK 1: Instalacja Pythona
+1. Pobierz Python (wersja 3.10 lub nowsza) stąd: https://www.python.org/downloads/
+2. Uruchom instalator.
+3. BARDZO WAŻNE: Na pierwszym ekranie zaznacz "Add Python.exe to PATH". Bez tego nie zadziała!
+4. Kliknij "Install Now".
+
+KROK 2: Instalacja Tesseract (Oczy bota)
+1. Pobierz instalator: https://github.com/UB-Mannheim/tesseract/wiki
+   (Szukaj pliku: tesseract-ocr-w64-setup-....exe)
+2. Zainstaluj go, klikając ciągle "Next". Nic nie zmieniaj.
+
+=========================================
+CZĘŚĆ 2: URUCHAMIANIE BOTA
+=========================================
+
+1. Wejdź do folderu z botem.
+2. Znajdź plik "StartPixelBot.bat" (może nazywać się po prostu "StartPixelBot").
+3. Kliknij go dwa razy.
+   -> Pojawi się czarne okno (konsola). Nie zamykaj go!
+   -> Przy pierwszym uruchomieniu może to chwilę potrwać (instalują się biblioteki).
+4. Po chwili wyskoczy drugie okienko - to panel sterowania bota ("Pixel Bot").
+
+PRO TIP: Jeśli bot nie klika klawiszy w Tibii:
+Kliknij prawym przyciskiem myszy na "StartPixelBot.bat" i wybierz "Uruchom jako administrator".
+Niektóre gry blokują kliknięcia, jeśli bot nie ma uprawnień administratora.
+
+=========================================
+CZĘŚĆ 3: KONFIGURACJA W GRZE
+=========================================
+
+1. Idź do zakładki "CONFIG" w bocie.
+2. Ustaw region HP:
+   - Kliknij "SELECT" przy HP Region.
+   - Ekran zrobi się szary.
+   - Zaznacz myszką prostokąt, gdzie w grze są cyferki Twojego życia (np. 150/150).
+3. Ustaw region Many:
+   - Kliknij "SELECT" przy Mana Region.
+   - Zaznacz prostokąt z maną.
+4. Idź do zakładki "STATUS".
+   - Powinieneś widzieć aktualne HP i Manę bota.
+   - Jeśli widzisz "---/---", sprawdź czy dobrze zaznaczyłeś obszar.
+
+5. Kliknij zielony przycisk "START". Bot zacznie działać!
+
+=========================================
+PROBLEMY?
+=========================================
+- Błąd "Nie znaleziono Pythona": Wróć do instalacji Pythona i upewnij się, że zaznaczyłeś "Add to PATH".
+- Bot się włącza, ale nie leczy: Sprawdź czy zaznaczyłeś dobre liczby na ekranie i czy ustawiłeś dobre Hotkeye (F1, F2 itp.) w bocie.
