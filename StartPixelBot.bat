@@ -5,40 +5,40 @@ echo ==========================================
 echo      Uruchamianie Pixel Bot Tibia
 echo ==========================================
 
-:: 1. Sprawdz czy Python jest zainstalowany
-python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [BLAD] Nie znaleziono Pythona!
-    echo Prosze zainstalowac Python 3.10 lub nowszy.
-    echo Pamietaj aby zaznaczyc opcje "Add Python to PATH" podczas instalacji.
+echo [1/4] Sprawdzanie Pythona...
+python --version
+if errorlevel 1 (
+    echo [BLAD] Nie znaleziono Pythona lub nie dodano do PATH.
+    echo Zainstaluj Python ze strony python.org i zaznacz "Add to PATH".
     pause
     exit /b
 )
 
-:: 2. Sprawdz czy istnieje wirtualne srodowisko (venv)
+echo [2/4] Sprawdzanie venv...
 if not exist venv (
-    echo [INFO] Tworzenie wirtualnego srodowiska (pierwsze uruchomienie)...
+    echo [INFO] Tworzenie venv...
     python -m venv venv
-    if %errorlevel% neq 0 (
-        echo [BLAD] Nie udalo sie stworzyc venv.
-        pause
-        exit /b
-    )
 )
 
-:: 3. Aktywuj venv
-call venv\Scripts\activate.bat
-
-:: 4. Zainstaluj biblioteki (jesli to pierwsze uruchomienie lub brakuje)
-echo [INFO] Sprawdzanie bibliotek...
-pip install -r requirements.txt >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [INFO] Instalowanie wymaganych bibliotek (moze to chwile potrwac)...
-    pip install -r requirements.txt
+echo [3/4] Aktywacja venv...
+if exist venv\Scripts\activate.bat (
+    call venv\Scripts\activate.bat
+) else (
+    echo [BLAD] Nie udalo sie znalezc venv\Scripts\activate.bat.
+    echo Sprobuj usunac folder 'venv' i uruchomic ponownie.
+    pause
+    exit /b
 )
 
-:: 5. Uruchom bota
-echo [SUKCES] Uruchamianie bota...
+echo [4/4] Instalacja bibliotek...
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+echo ==========================================
+echo      STARTOWANIE BOTA...
+echo ==========================================
 python main.py
 
+echo.
+echo [KONIEC] Aplikacja zakonczyla dzialanie.
 pause
