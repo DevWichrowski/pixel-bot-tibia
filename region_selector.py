@@ -245,8 +245,10 @@ class RegionSelector:
                 # For now, let's trust that mss.grab(monitor) works with the dictionary provided below.
                 # If we pass explicit layout to mss:
                 
-                # We need to know absolute coordinates for MSS.
-                # Let's fetch the offset from the root window if it exists, but it might be destroyed.
+                # Calculate absolute screen coordinates
+                abs_x = self.offset_x + region.x
+                abs_y = self.offset_y + region.y
+                
                 monitor = {
                     "left": abs_x,
                     "top": abs_y,
