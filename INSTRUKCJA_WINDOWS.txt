@@ -54,5 +54,16 @@ CZĘŚĆ 3: KONFIGURACJA W GRZE
 =========================================
 PROBLEMY?
 =========================================
-- Błąd "Nie znaleziono Pythona": Wróć do instalacji Pythona i upewnij się, że zaznaczyłeś "Add to PATH".
+!!! NAJCZĘSTSZY BŁĄD: "nie znaleziono Python" lub "pip is not recognized" !!!
+Ten błąd oznacza, że pominąłeś KROK 1.3 w instalacji.
+
+JAK TO NAPRAWIĆ (3 minuty):
+1. Odinstaluj Pythona (Dodaj lub usuń programy -> Python -> Odinstaluj).
+2. Uruchom instalator Pythona JESZCZE RAZ.
+3. NA PIERWSZYM EKRANIE ZAZNACZ: [x] Add Python.exe to PATH (jest na dole okienka).
+4. Kliknij Install.
+5. Spróbuj uruchomić bota ponownie.
+=========================================
+
 - Bot się włącza, ale nie leczy: Sprawdź czy zaznaczyłeś dobre liczby na ekranie i czy ustawiłeś dobre Hotkeye (F1, F2 itp.) w bocie.
+
