@@ -29,7 +29,7 @@ class TibiaBot:
         self.skinner = AutoSkinner(press_key)
         self.running = False
         self.active = False
-        self.sct = mss.mss()  # Screen capture
+        self.sct = None  # Initialized in run_loop for thread safety on Windows
         
         # Load saved regions
         self._load_saved_config()
@@ -245,61 +245,65 @@ class TibiaBot:
         import traceback
         wait = 1.0 / REFRESH_RATE
         
-        while self.running:
-            try:
-                # Check Auto Eater overlapping Auto Haste (both time based)
-                if self.active:
-                    self.eater.check_and_eat()
-                    self.haste.check_and_cast()
-                    # auto skinner runs in its own thread via listener
-
-                # Only read if regions are configured
-                if not self.reader.is_configured():
-                    time.sleep(0.5)
-                    continue
-                
-                # Capture screen
-                img = self._capture_screen()
-                
-                # Read HP/Mana from configured regions
-                status = self.reader.read_status(img)
-                
-                # Always update display (even when not active)
-                if status.hp_current or status.mana_current:
-                    self.overlay.set_hp(status.hp_current, status.hp_max)
-                    self.overlay.set_mana(status.mana_current, status.mana_max)
-                    
-                    # Set max HP/Mana for healer
-                    if status.hp_max and self.healer.max_hp is None:
-                        self.healer.set_max_hp(status.hp_max)
-                    if status.mana_max and self.healer.max_mana is None:
-                        self.healer.set_max_mana(status.mana_max)
-                    
-                    # Set status based on app state
+        # Initialize mss here to ensure thread safety on Windows
+        with mss.mss() as sct:
+            self.sct = sct
+            
+            while self.running:
+                try:
+                    # Check Auto Eater overlapping Auto Haste (both time based)
                     if self.active:
-                        self.overlay.set_status("✅ Running")
+                        self.eater.check_and_eat()
+                        self.haste.check_and_cast()
+                        # auto skinner runs in its own thread via listener
+
+                    # Only read if regions are configured
+                    if not self.reader.is_configured():
+                        time.sleep(0.5)
+                        continue
+                    
+                    # Capture screen
+                    img = self._capture_screen()
+                    
+                    # Read HP/Mana from configured regions
+                    status = self.reader.read_status(img)
+                    
+                    # Always update display (even when not active)
+                    if status.hp_current or status.mana_current:
+                        self.overlay.set_hp(status.hp_current, status.hp_max)
+                        self.overlay.set_mana(status.mana_current, status.mana_max)
                         
-                        # Perform healing actions (silently)
-                        heal_result = None
-                        mana_result = False
+                        # Set max HP/Mana for healer
+                        if status.hp_max and self.healer.max_hp is None:
+                            self.healer.set_max_hp(status.hp_max)
+                        if status.mana_max and self.healer.max_mana is None:
+                            self.healer.set_max_mana(status.mana_max)
                         
-                        if status.hp_current:
-                            heal_result = self.healer.check_and_heal(status.hp_current)
-                        
-                        if not heal_result and status.mana_current:
-                            mana_result = self.healer.check_and_restore_mana(status.mana_current)
+                        # Set status based on app state
+                        if self.active:
+                            self.overlay.set_status("✅ Running")
+                            
+                            # Perform healing actions (silently)
+                            heal_result = None
+                            mana_result = False
+                            
+                            if status.hp_current:
+                                heal_result = self.healer.check_and_heal(status.hp_current)
+                            
+                            if not heal_result and status.mana_current:
+                                mana_result = self.healer.check_and_restore_mana(status.mana_current)
+                        else:
+                            self.overlay.set_status("⏸️ Monitoring")
                     else:
-                        self.overlay.set_status("⏸️ Monitoring")
-                else:
-                    self.overlay.set_status("🔍 Reading...")
-                
-                time.sleep(wait)
-                
-            except Exception as e:
-                print(f"❌ ERROR: {e}")
-                traceback.print_exc()
-                self.overlay.set_status(f"❌ Error: {str(e)[:20]}")
-                time.sleep(1)
+                        self.overlay.set_status("🔍 Reading...")
+                    
+                    time.sleep(wait)
+                    
+                except Exception as e:
+                    print(f"❌ ERROR: {e}")
+                    traceback.print_exc()
+                    self.overlay.set_status(f"❌ Error: {str(e)[:20]}")
+                    time.sleep(1)
     
     def run(self):
         """Start bot with overlay."""
@@ -356,8 +360,9 @@ class TibiaBot:
         self.overlay.root.mainloop()
         
         # Cleanup
+        # Cleanup
         self.running = False
-        self.sct.close()
+        # self.sct is closed automatically by the context manager in run_loop
 
 
 def main():
