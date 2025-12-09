@@ -150,8 +150,8 @@ class HPManaReader:
             # Scale up for better OCR - 2x is faster than 3x with similar accuracy
             scaled = cv2.resize(binary, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
             
-            # Add minimal padding
-            padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
+            # Add padding
+            padded = cv2.copyMakeBorder(scaled, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
             
             try:
                 # OEM 1 = LSTM engine (faster), PSM 7 = single line
