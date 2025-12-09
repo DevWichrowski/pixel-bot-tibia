@@ -198,15 +198,17 @@ class TibiaBot:
         self.config_manager.config.healer.mana_threshold = value
         self.config_manager.save()
     
-    def _on_hp_region_selected(self):
+    def _on_hp_region_selected(self, region: tuple):
         """Handle HP region selection."""
-        # This is actually called by the BUTTON in OVERLAY.
-        # The overlay class handles the selection triggering.
-        # We need to pass the monitor geometry TO THE OVERLAY so it can pass it to the selector.
-        pass
-        
-    # We need to update overlay.py to accept monitor_geometry and use it.
-    # Let's fix main.py capture first.
+        self.reader.set_regions(hp_region=region)
+        self.config_manager.set_hp_region(region)
+        print(f"📍 HP region saved: {region}")
+    
+    def _on_mana_region_selected(self, region: tuple):
+        """Handle Mana region selection."""
+        self.reader.set_regions(mana_region=region)
+        self.config_manager.set_mana_region(region)
+        print(f"📍 Mana region saved: {region}")
     
     def _on_reset_config(self):
         """Handle config reset."""
