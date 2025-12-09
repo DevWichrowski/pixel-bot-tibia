@@ -134,26 +134,30 @@ class HPManaReader:
     
     def _ocr_region(self, img: Image.Image) -> str:
         """Perform OCR on a region image. Optimized for speed."""
+        import time
+        start_time = time.perf_counter()
+        
         # Convert to grayscale numpy array
         arr = np.array(img.convert('L'))
         
-        # Use only 3 best thresholds instead of 13 - ~4x faster!
+        # WINDOWS SPEED: Only 2 thresholds for maximum speed
         # These values work well for Tibia's text contrast
-        best_thresholds = [100, 140, 180]
+        best_thresholds = [120, 160]
         
         for thresh in best_thresholds:
             _, binary = cv2.threshold(arr, thresh, 255, cv2.THRESH_BINARY)
             
-            # Scale up for better OCR
-            scaled = cv2.resize(binary, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+            # Scale up for better OCR - 2x is faster than 3x with similar accuracy
+            scaled = cv2.resize(binary, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
             
-            # Add padding - increased to 20 to reduce edge artifacts
-            padded = cv2.copyMakeBorder(scaled, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
+            # Add minimal padding
+            padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
             
             try:
+                # OEM 1 = LSTM engine (faster), PSM 7 = single line
                 text = pytesseract.image_to_string(
                     padded,
-                    config='--psm 7 -c tessedit_char_whitelist=0123456789/'
+                    config='--psm 7 --oem 1 -c tessedit_char_whitelist=0123456789/'
                 ).strip()
                 
                 # Debug raw OCR for analysis
@@ -161,25 +165,31 @@ class HPManaReader:
                     print(f"DEBUG OCR (thresh={thresh}): '{text}'")
                 
                 if text and '/' in text:
+                    elapsed = (time.perf_counter() - start_time) * 1000
+                    print(f"⏱️ OCR: {elapsed:.1f}ms | Result: '{text}'")
                     return text  # Return immediately if we get a valid result
             except:
                 pass
         
         # Fallback: try inverted (light text on dark background)
         _, binary = cv2.threshold(arr, 120, 255, cv2.THRESH_BINARY_INV)
-        scaled = cv2.resize(binary, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
+        scaled = cv2.resize(binary, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
         padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
         
         try:
             text = pytesseract.image_to_string(
                 padded,
-                config='--psm 7 -c tessedit_char_whitelist=0123456789/'
+                config='--psm 7 --oem 1 -c tessedit_char_whitelist=0123456789/'
             ).strip()
             if text and '/' in text:
+                elapsed = (time.perf_counter() - start_time) * 1000
+                print(f"⏱️ OCR (fallback): {elapsed:.1f}ms | Result: '{text}'")
                 return text
         except:
             pass
         
+        elapsed = (time.perf_counter() - start_time) * 1000
+        print(f"⏱️ OCR FAILED: {elapsed:.1f}ms | No valid result")
         return ""
     
     def read_hp(self, screenshot: Image.Image) -> Optional[Tuple[int, int]]:
