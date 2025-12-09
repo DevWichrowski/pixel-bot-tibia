@@ -147,8 +147,12 @@ class HPManaReader:
         for thresh in best_thresholds:
             _, binary = cv2.threshold(arr, thresh, 255, cv2.THRESH_BINARY)
             
-            # Scale up for better OCR - 2x is faster than 3x with similar accuracy
-            scaled = cv2.resize(binary, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+            # Adaptive scaling - skip for large images (already big enough)
+            height, width = binary.shape
+            if width < 150:  # Small region - scale up
+                scaled = cv2.resize(binary, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+            else:  # Large region/font - no scaling needed
+                scaled = binary
             
             # Add padding
             padded = cv2.copyMakeBorder(scaled, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
@@ -173,8 +177,12 @@ class HPManaReader:
         
         # Fallback: try inverted (light text on dark background)
         _, binary = cv2.threshold(arr, 120, 255, cv2.THRESH_BINARY_INV)
-        scaled = cv2.resize(binary, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
-        padded = cv2.copyMakeBorder(scaled, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=255)
+        height, width = binary.shape
+        if width < 150:
+            scaled = cv2.resize(binary, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+        else:
+            scaled = binary
+        padded = cv2.copyMakeBorder(scaled, 20, 20, 20, 20, cv2.BORDER_CONSTANT, value=255)
         
         try:
             text = pytesseract.image_to_string(
