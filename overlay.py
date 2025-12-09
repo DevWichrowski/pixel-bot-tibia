@@ -864,25 +864,25 @@ class TibiaStyleOverlay:
                 self.on_start()
     
     def _select_hp_region(self):
-        self.root.withdraw()
-        def on_sel(region):
-            self.root.deiconify()
-            if region:
-                self.hp_region_configured = True
         """Open region selector for HP."""
         self.root.withdraw()
         # Pass monitor geometry for correct screen placement
         self.region_selector.select_region(
-            self.root,
-            self._handle_hp_selection,
+            self.root, 
+            self._handle_hp_selection, 
             "Select HP Region",
             monitor_geometry=self.monitor_geometry
         )
 
     def _select_mana_region(self):
-                if self.on_mana_region_select:
-                    self.on_mana_region_select(region.as_tuple())
-        self.region_selector.select_region(self.root, on_sel, "Select Mana Region")
+        """Open region selector for Mana."""
+        self.root.withdraw()
+        self.region_selector.select_region(
+            self.root, 
+            self._handle_mana_selection, 
+            "Select Mana Region",
+            monitor_geometry=self.monitor_geometry
+        )
     
     def _test_region_ocr(self, region):
         try:
