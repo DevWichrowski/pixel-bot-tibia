@@ -361,8 +361,31 @@ class TibiaBot:
 
 
 def main():
+    import pytesseract
+    
+    # Initialize config manager
+    config_manager = ConfigManager()
+    config_manager.load()
+
+    # WINDOWS FIX: Auto-detect Tesseract path if not in PATH
+    if platform.system() == "Windows":
+        import shutil
+        if not shutil.which("tesseract"):
+            # Check common default install locations
+            common_paths = [
+                r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+                r"C:\Users\%USERNAME%\AppData\Local\Tesseract-OCR\tesseract.exe"
+            ]
+            import os
+            for p in common_paths:
+                expanded = os.path.expandvars(p)
+                if os.path.exists(expanded):
+                    print(f"🔍 Found Tesseract manually at: {expanded}")
+                    pytesseract.pytesseract.tesseract_cmd = expanded
+                    break
+
     try:
-        import pytesseract
         pytesseract.get_tesseract_version()
     except:
         if platform.system() == "Darwin":
@@ -371,14 +394,7 @@ def main():
              print("⚠️ Tesseract not found! Install Tesseract-OCR and add to PATH.")
         else:
              print("⚠️ Tesseract not found! Install tesseract-ocr package.")
-
         return
-    
-    # Initialize config manager
-    config_manager = ConfigManager()
-    config_manager.load()
-    
-    # Create overlay and bot
     overlay = TibiaStyleOverlay()
     bot = TibiaBot(overlay, config_manager)
     
