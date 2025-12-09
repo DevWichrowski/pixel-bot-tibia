@@ -884,6 +884,32 @@ class TibiaStyleOverlay:
             monitor_geometry=self.monitor_geometry
         )
     
+    def _handle_hp_selection(self, region):
+        """Handle HP region selection callback."""
+        self.root.deiconify()
+        if region:
+            self.hp_region_configured = True
+            result = self._test_region_ocr(region.as_tuple())
+            if result:
+                self.hp_region_status.set(f"{self.ICONS['check']} {result[0]}/{result[1]}")
+            else:
+                self.hp_region_status.set(f"{self.ICONS['check']} Set")
+            if self.on_hp_region_select:
+                self.on_hp_region_select(region.as_tuple())
+    
+    def _handle_mana_selection(self, region):
+        """Handle Mana region selection callback."""
+        self.root.deiconify()
+        if region:
+            self.mana_region_configured = True
+            result = self._test_region_ocr(region.as_tuple())
+            if result:
+                self.mana_region_status.set(f"{self.ICONS['check']} {result[0]}/{result[1]}")
+            else:
+                self.mana_region_status.set(f"{self.ICONS['check']} Set")
+            if self.on_mana_region_select:
+                self.on_mana_region_select(region.as_tuple())
+    
     def _test_region_ocr(self, region):
         try:
             import mss, cv2, numpy as np, re
