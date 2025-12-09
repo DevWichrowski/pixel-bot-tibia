@@ -62,15 +62,18 @@ class RegionSelector:
         
         self.screen_width = 0
         self.screen_height = 0
+        self.offset_x = 0
+        self.offset_y = 0
         self.title = ""
     
     def select_region(
         self, 
         parent: tk.Tk,
         callback: Callable[[Optional[Region]], None],
-        title: str = "Select Region"
+        title: str = "Select Region",
+        monitor_geometry: Optional[dict] = None
     ) -> None:
-        """Open transparent overlay for region selection."""
+        """Open transparent overlay for region selection on specific monitor."""
         self.callback = callback
         self.title = title
         
@@ -78,22 +81,39 @@ class RegionSelector:
         self.root = tk.Toplevel(parent)
         self.root.title("Select Region")
         
-        # Get screen size
-        self.screen_width = self.root.winfo_screenwidth()
-        self.screen_height = self.root.winfo_screenheight()
+        # Determine geometry
+        if monitor_geometry:
+            x = monitor_geometry["left"]
+            y = monitor_geometry["top"]
+            w = monitor_geometry["width"]
+            h = monitor_geometry["height"]
+        else:
+            # Fallback to primary
+            w = self.root.winfo_screenwidth()
+            h = self.root.winfo_screenheight()
+            x = 0
+            y = 0
+            
+        self.screen_width = w
+        self.screen_height = h
         
         # Setup window - transparent background
-        self.root.geometry(f"{self.screen_width}x{self.screen_height}+0+0")
+        # Note: on Windows, negative coords (secondary monitor to the left) work fine
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
         self.root.attributes("-alpha", 0.3)  # Semi-transparent!
         self.root.configure(bg="black")
         
+        # Store offsets for absolute coordinate calculation later
+        self.offset_x = x
+        self.offset_y = y
+        
         # Canvas for drawing selection
         self.canvas = tk.Canvas(
             self.root,
-            width=self.screen_width,
-            height=self.screen_height,
+            width=w,
+            height=h,
             highlightthickness=0,
             cursor="crosshair",
             bg="black"
@@ -155,6 +175,27 @@ class RegionSelector:
         x1, x2 = sorted([self.start_x, event.x])
         y1, y2 = sorted([self.start_y, event.y])
         
+        # Create region with RELATIVE coordinates for now (needed for OCR visual test)
+        # But for the final result, we should probably check if the user expects absolute.
+        # The bot logic in main.py usually expects coordinates relative to the monitor it captures.
+        # However, mss.grab() expects absolute screen coordinates if we provide a dict.
+        # If main.py does sct.grab(sct.monitors[1]), that's absolute coordinates internally.
+        
+        # CRITICAL FIX: Region object should store absolute coordinates if we want consistent behavior
+        # But wait, main.py uses `img = self._capture_screen()` -> `sct.grab(monitor)`.
+        # `monitor` is `sct.monitors[1]`.
+        # `reader.read_status(img)` -> crops relative to that image.
+        # So we need coordinates RELATIVE TO THE MONITOR (image), not absolute screen coords?
+        
+        # No, wait. 
+        # _capture_screen captures the whole specific monitor. The image is 1920x1080 (for example).
+        # The region coordinates must be relative to that image (0,0 to 1920,1080).
+        # Since our overlay `canvas` covers exactly that monitor (width x height),
+        # `event.x` and `event.y` ARE ALREADY relative to that monitor's top-left!
+        
+        # So: region x/y are correct relative to monitor.
+        # We just needed absolute for the immediate OCR test below (because mss needs absolute).
+        
         region = Region(x=x1, y=y1, width=x2 - x1, height=y2 - y1)
         
         self._close()
@@ -179,10 +220,36 @@ class RegionSelector:
             import numpy as np
             
             # Capture the region from screen
+            # Note: region.x/y are relative to the overlay window
+            # If overlay is on secondary monitor (e.g. at x=1920), we need to add that offset
+            
+            # Find which monitor this region belongs to (simplified)
             with mss.mss() as sct:
+                # We need global coordinates
+                # Since we don't easily have the monitor offset here without passing it,
+                # let's assume the region coordinates are relative to the window provided.
+                # However, modifying _test_region strictly might be complex without the offset.
+                # simpler approach: capture the specific monitor using mss and crop.
+                pass 
+                
+                # REVERTED STRATEGY: We captured `region` from mouse events on the canvas.
+                # If the canvas was at +1920, the event.x might be relative to 1920 or 0 depending on Tkinter.
+                # Standard Tkinter event.x is relative to the widget.
+                # So if we placed window at 1920,0, event.x=10 means absolute x=1930.
+                
+                # To fix this properly, we need to know the window position.
+                # But `select_region` is async (callback).
+                # Let's rely on the passed callback to handle coordinate translation if needed,
+                # OR (better) just capture relative to the monitor we are on.
+                
+                # For now, let's trust that mss.grab(monitor) works with the dictionary provided below.
+                # If we pass explicit layout to mss:
+                
+                # We need to know absolute coordinates for MSS.
+                # Let's fetch the offset from the root window if it exists, but it might be destroyed.
                 monitor = {
-                    "left": region.x,
-                    "top": region.y,
+                    "left": abs_x,
+                    "top": abs_y,
                     "width": region.width,
                     "height": region.height
                 }

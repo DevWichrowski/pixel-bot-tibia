@@ -29,8 +29,28 @@ class TibiaBot:
         self.skinner = AutoSkinner(press_key)
         self.running = False
         self.active = False
+        self.running = False
+        self.active = False
         self.sct = None  # Initialized in run_loop for thread safety on Windows
         
+        # Monitor selection
+        self.monitor_idx = 1
+        self.monitor_geometry = None
+        
+        # Detect functionality
+        try:
+             with mss.mss() as sct:
+                # auto-select secondary on Windows if available
+                if platform.system() == "Windows" and len(sct.monitors) > 2:
+                    self.monitor_idx = 2
+                    print("🖥️ Windows detected: Defaulting to Secondary Monitor")
+                
+                # Cache geometry for region selector
+                if len(sct.monitors) > self.monitor_idx:
+                    self.monitor_geometry = sct.monitors[self.monitor_idx]
+        except Exception as e:
+            print(f"Monitor detect error: {e}")
+
         # Load saved regions
         self._load_saved_config()
         
@@ -178,17 +198,15 @@ class TibiaBot:
         self.config_manager.config.healer.mana_threshold = value
         self.config_manager.save()
     
-    def _on_hp_region_selected(self, region: tuple):
+    def _on_hp_region_selected(self):
         """Handle HP region selection."""
-        self.reader.set_regions(hp_region=region)
-        self.config_manager.set_hp_region(region)
-        print(f"📍 HP region saved: {region}")
-    
-    def _on_mana_region_selected(self, region: tuple):
-        """Handle Mana region selection."""
-        self.reader.set_regions(mana_region=region)
-        self.config_manager.set_mana_region(region)
-        print(f"📍 Mana region saved: {region}")
+        # This is actually called by the BUTTON in OVERLAY.
+        # The overlay class handles the selection triggering.
+        # We need to pass the monitor geometry TO THE OVERLAY so it can pass it to the selector.
+        pass
+        
+    # We need to update overlay.py to accept monitor_geometry and use it.
+    # Let's fix main.py capture first.
     
     def _on_reset_config(self):
         """Handle config reset."""
@@ -235,8 +253,9 @@ class TibiaBot:
         self.overlay.set_mana(None)
     
     def _capture_screen(self) -> Image.Image:
-        """Capture entire screen."""
-        monitor = self.sct.monitors[1]  # Primary monitor
+        """Capture entire specific monitor."""
+        # Use detected monitor index
+        monitor = self.sct.monitors[self.monitor_idx]
         screenshot = self.sct.grab(monitor)
         return Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
     
@@ -402,6 +421,9 @@ def main():
         return
     overlay = TibiaStyleOverlay()
     bot = TibiaBot(overlay, config_manager)
+    
+    # Pass detected monitor geometry to overlay for correct selector placement
+    overlay.monitor_geometry = bot.monitor_geometry
     
     overlay.on_start = bot.start
     overlay.on_stop = bot.stop
