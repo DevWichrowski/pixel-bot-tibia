@@ -20,6 +20,7 @@
     "critical_enabled": true,
     "critical_threshold": 50,
     "critical_hotkey": "F2",
+    "critical_is_potion": true,
     "mana_enabled": true,
     "mana_threshold": 40,
     "mana_hotkey": "F4"

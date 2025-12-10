@@ -111,6 +111,9 @@ class TibiaBot:
         self.overlay.on_hp_region_select = self._on_hp_region_selected
         self.overlay.on_mana_region_select = self._on_mana_region_selected
         self.overlay.on_reset_config = self._on_reset_config
+        
+        # Critical is potion callback
+        self.overlay.on_critical_is_potion_toggle = self._on_critical_is_potion_toggle
 
     # Persistent Config Wrappers
     def _on_heal_toggle(self, enabled: bool):
@@ -161,6 +164,11 @@ class TibiaBot:
     def _on_skinner_hotkey_change(self, key: str):
         self.skinner.hotkey = key
         self.config_manager.config.skinner.hotkey = key
+        self.config_manager.save()
+    
+    def _on_critical_is_potion_toggle(self, enabled: bool):
+        self.healer.critical_is_potion = enabled
+        self.config_manager.config.healer.critical_is_potion = enabled
         self.config_manager.save()
         
     def _on_heal_threshold_change(self, value: int):
@@ -359,6 +367,7 @@ class TibiaBot:
         if self.overlay.eater_enabled: self.overlay.eater_enabled.set(config.eater.enabled)
         if self.overlay.haste_enabled: self.overlay.haste_enabled.set(config.haste.enabled)
         if self.overlay.skinner_enabled: self.overlay.skinner_enabled.set(config.skinner.enabled)
+        if self.overlay.critical_is_potion_enabled: self.overlay.critical_is_potion_enabled.set(config.healer.critical_is_potion)
         
         if self.overlay.heal_threshold_var: self.overlay.heal_threshold_var.set(str(config.healer.heal_threshold))
         if self.overlay.critical_threshold_var: self.overlay.critical_threshold_var.set(str(config.healer.critical_threshold))

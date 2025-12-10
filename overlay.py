@@ -265,6 +265,7 @@ class TibiaStyleOverlay:
         self.on_haste_hotkey_change: Optional[Callable[[str], None]] = None
         self.on_skinner_toggle: Optional[Callable[[bool], None]] = None
         self.on_skinner_hotkey_change: Optional[Callable[[str], None]] = None
+        self.on_critical_is_potion_toggle: Optional[Callable[[bool], None]] = None
         
         # UI variables
         self.status_var: Optional[tk.StringVar] = None
@@ -292,6 +293,7 @@ class TibiaStyleOverlay:
         self.haste_hotkey_var = None
         self.skinner_enabled = None
         self.skinner_hotkey_var = None
+        self.critical_is_potion_enabled = None
         
         # Region selector
         self.region_selector = RegionSelector()
@@ -757,6 +759,32 @@ class TibiaStyleOverlay:
         
         self._create_hotkey_row(food_inner, "Key:", self.eater_hotkey_var, "eater")
         
+        # Critical Is Potion section
+        self._create_pixel_section(frame, "POTION MODE", self.ICONS["critical"])
+        
+        potion_panel = PixelArtPanel(frame, bg_color=self.THEME["bg_panel"],
+                                      border_size=3, width=258, height=45)
+        potion_panel.pack(fill="x")
+        potion_inner = potion_panel.get_frame()
+        
+        self.critical_is_potion_enabled = tk.BooleanVar(value=False)
+        self._create_simple_toggle(
+            potion_inner, 
+            f"{self.ICONS['critical']} Crit is Potion",
+            self.critical_is_potion_enabled, 
+            self._on_critical_is_potion_toggle,
+            self.THEME["error"]
+        )
+        
+        # Info label
+        tk.Label(
+            potion_inner, 
+            text="Priority: Crit > Mana", 
+            font=("Consolas", 8),
+            fg=self.THEME["text_dim"], 
+            bg=self.THEME["bg_panel"]
+        ).pack(anchor="w", padx=16)
+        
         # Hotkeys section
         self._create_pixel_section(frame, "HOTKEYS", "♪")
         
@@ -935,6 +963,8 @@ class TibiaStyleOverlay:
         if self.on_haste_toggle: self.on_haste_toggle(self.haste_enabled.get())
     def _on_skinner_toggle(self):
         if self.on_skinner_toggle: self.on_skinner_toggle(self.skinner_enabled.get())
+    def _on_critical_is_potion_toggle(self):
+        if self.on_critical_is_potion_toggle: self.on_critical_is_potion_toggle(self.critical_is_potion_enabled.get())
     def _on_food_type_change(self, val):
         if self.on_food_type_change: self.on_food_type_change(val)
     def _on_heal_threshold_change(self, e=None):
