@@ -46,6 +46,9 @@ class AutoHealer:
         # Mana configuration - enabled by default
         self.mana_restore = HealConfig(enabled=True, threshold=60, hotkey="F4")
         
+        # Critical heal is a potion mode - shares cooldown with mana, has priority
+        self.critical_is_potion = False
+        
         # Cooldown tracking
         self.last_cast_time = 0.0
     
@@ -173,6 +176,46 @@ class AutoHealer:
             return True
         
         return False
+    
+    def check_critical_and_mana_with_priority(
+        self, 
+        current_hp: int, 
+        current_mana: int
+    ) -> tuple:
+        """
+        Check both critical heal and mana, with critical heal priority.
+        
+        This method should be used when critical_is_potion is True.
+        Critical heal ALWAYS takes priority over mana restore because
+        dying is worse than running out of mana.
+        
+        Returns:
+            tuple: (heal_type or None, mana_restored: bool)
+        """
+        # Auto-detect max values
+        self.auto_detect_max_hp(current_hp)
+        self.auto_detect_max_mana(current_mana)
+        
+        if self.is_on_cooldown():
+            return None, False
+        
+        # Calculate percentages
+        hp_percent = self.get_hp_percent(current_hp) if current_hp and self.max_hp else 100.0
+        mana_percent = self.get_mana_percent(current_mana) if current_mana and self.max_mana else 100.0
+        
+        # Priority 1: Critical heal (life-saving)
+        if self.critical_heal.enabled and hp_percent < self.critical_heal.threshold:
+            self._cast_heal(self.critical_heal)
+            return "critical", False
+        
+        # Priority 2: Mana restore (only if critical heal not needed)
+        if self.mana_restore.enabled and mana_percent < self.mana_restore.threshold:
+            self.press_key(self.mana_restore.hotkey)
+            self.last_cast_time = time.time()
+            print(f"🔷 Mana restore: {self.mana_restore.hotkey} (threshold: {self.mana_restore.threshold}%)")
+            return None, True
+        
+        return None, False
 
 
 def press_key(key: str):

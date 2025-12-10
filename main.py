@@ -58,6 +58,7 @@ class TibiaBot:
         self.healer.critical_heal.enabled = healer_cfg.critical_enabled
         self.healer.critical_heal.threshold = healer_cfg.critical_threshold
         self.healer.critical_heal.hotkey = healer_cfg.critical_hotkey
+        self.healer.critical_is_potion = healer_cfg.critical_is_potion
         self.healer.mana_restore.enabled = healer_cfg.mana_enabled
         self.healer.mana_restore.threshold = healer_cfg.mana_threshold
         self.healer.mana_restore.hotkey = healer_cfg.mana_hotkey
@@ -282,11 +283,23 @@ class TibiaBot:
                         heal_result = None
                         mana_result = False
                         
-                        if status.hp_current:
-                            heal_result = self.healer.check_and_heal(status.hp_current)
-                        
-                        if not heal_result and status.mana_current:
-                            mana_result = self.healer.check_and_restore_mana(status.mana_current)
+                        if self.healer.critical_is_potion:
+                            # Critical heal and mana share cooldown - use priority method
+                            if status.hp_current or status.mana_current:
+                                heal_result, mana_result = self.healer.check_critical_and_mana_with_priority(
+                                    status.hp_current or 0,
+                                    status.mana_current or 0
+                                )
+                                # Still check normal heal separately (different cooldown)
+                                if not heal_result and not mana_result and status.hp_current:
+                                    heal_result = self.healer.check_and_heal(status.hp_current)
+                        else:
+                            # Original behavior: separate heal and mana checks
+                            if status.hp_current:
+                                heal_result = self.healer.check_and_heal(status.hp_current)
+                            
+                            if not heal_result and status.mana_current:
+                                mana_result = self.healer.check_and_restore_mana(status.mana_current)
                     else:
                         self.overlay.set_status("⏸️ Monitoring")
                 else:

@@ -36,6 +36,7 @@ class HealerConfig:
     critical_enabled: bool = True
     critical_threshold: int = 50
     critical_hotkey: str = "F2"
+    critical_is_potion: bool = False  # Share cooldown with mana, prioritize over mana
     
     mana_enabled: bool = True
     mana_threshold: int = 60
